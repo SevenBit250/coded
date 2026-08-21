@@ -1,15 +1,23 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 
-/** Frameless-window chrome buttons (pin? / minimize / maximize / close) over
- *  the preload bridge. Shared by the startup glass overlay and the main
- *  titlebar; the pin button is only rendered when requested. */
+/**
+ * Frameless-window chrome buttons.
+ *
+ * On Windows the system caption buttons (min/max/close) are drawn by Windows
+ * itself via titleBarOverlay — a WinUI 3 style title bar — so only the pin
+ * (always-on-top) affordance is custom. On other platforms all buttons are
+ * rendered here.
+ */
 export function WindowControls({ pin = false }: { pin?: boolean }): ReactElement {
   const [pinned, setPinned] = useState(false)
+  const isWindows = window.dshDesktop.platform === 'win32'
 
   const togglePin = async (): Promise<void> => {
     setPinned(await window.dshDesktop.togglePinned())
   }
+
+  if (isWindows && !pin) return <></>
 
   return (
     <div className="controls no-drag">
@@ -26,36 +34,40 @@ export function WindowControls({ pin = false }: { pin?: boolean }): ReactElement
           </svg>
         </button>
       )}
-      <button
-        className="ctl"
-        title="最小化"
-        aria-label="最小化"
-        onClick={() => window.dshDesktop.minimize()}
-      >
-        <svg viewBox="0 0 12 12">
-          <line x1="2" y1="6" x2="10" y2="6" />
-        </svg>
-      </button>
-      <button
-        className="ctl"
-        title="最大化"
-        aria-label="最大化"
-        onClick={() => window.dshDesktop.maximize()}
-      >
-        <svg viewBox="0 0 12 12">
-          <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
-        </svg>
-      </button>
-      <button
-        className="ctl danger"
-        title="关闭"
-        aria-label="关闭"
-        onClick={() => window.dshDesktop.close()}
-      >
-        <svg viewBox="0 0 12 12">
-          <path d="M3 3l6 6M9 3l-6 6" />
-        </svg>
-      </button>
+      {!isWindows && (
+        <>
+          <button
+            className="ctl"
+            title="最小化"
+            aria-label="最小化"
+            onClick={() => window.dshDesktop.minimize()}
+          >
+            <svg viewBox="0 0 12 12">
+              <line x1="2" y1="6" x2="10" y2="6" />
+            </svg>
+          </button>
+          <button
+            className="ctl"
+            title="最大化"
+            aria-label="最大化"
+            onClick={() => window.dshDesktop.maximize()}
+          >
+            <svg viewBox="0 0 12 12">
+              <rect x="2.5" y="2.5" width="7" height="7" rx="1" />
+            </svg>
+          </button>
+          <button
+            className="ctl danger"
+            title="关闭"
+            aria-label="关闭"
+            onClick={() => window.dshDesktop.close()}
+          >
+            <svg viewBox="0 0 12 12">
+              <path d="M3 3l6 6M9 3l-6 6" />
+            </svg>
+          </button>
+        </>
+      )}
     </div>
   )
 }
