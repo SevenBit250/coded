@@ -82,6 +82,46 @@ function MenuIcon({ name }: MenuIconProps): ReactElement {
   }
 }
 
+/** Sidebar top row: logo (collapse/expand toggle) and back/forward arrows;
+ *  the new-chat button only appears in the collapsed bar (reference).
+ *  The title is intentionally absent in both states. */
+function SidebarTopRow({
+  onToggle,
+  showChat = false,
+}: {
+  onToggle: () => void
+  showChat?: boolean
+}): ReactElement {
+  return (
+    <>
+      <button
+        className="logo-mark"
+        title="收起/展开侧边栏"
+        aria-label="收起或展开侧边栏"
+        onClick={onToggle}
+      >
+        DSH
+      </button>
+      <span className="nav-arrows" aria-hidden="true">
+        <Glyph>
+          <path d="M10.5 3.5L6 8l4.5 4.5" />
+        </Glyph>
+        <Glyph>
+          <path d="M5.5 3.5L10 8l-4.5 4.5" />
+        </Glyph>
+      </span>
+      {showChat && (
+        <button className="chat-new" title="新建对话" aria-label="新建对话">
+          <Glyph>
+            <path d="M8 2.6c-3.2 0-5.7 2.2-5.7 5 0 1 .3 1.9.9 2.7L2.6 13.2l2.9-.9c.8.4 1.6.6 2.5.6 3.2 0 5.7-2.3 5.7-5.1S11.2 2.6 8 2.6z" />
+            <path d="M8 5.4v4M6 7.4h4" />
+          </Glyph>
+        </button>
+      )}
+    </>
+  )
+}
+
 /** Project list entry (placeholder data until the dsh host lands). */
 interface ProjectEntry {
   name: string
@@ -154,36 +194,18 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
       className={`screen main ${shown ? 'entered' : 'entering'}`}
       aria-label="主界面"
     >
-      {/* Sidebar runs the full window height (贯通); its top row doubles
-          as the left drag region. The right column holds the WinUI-style
-          title bar (drag region + system caption area) and the content. */}
+      {/* The anchor strip is transparent and owns the window drag region
+          (full top width); the button group floats inside with no-drag
+          holes, so dragging works everywhere outside the buttons. No app
+          title in either state. */}
+      <div className="anchor-bar">
+        <SidebarTopRow
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+          showChat={!sidebarOpen}
+        />
+      </div>
       <div className={`main-body ${sidebarOpen ? '' : 'collapsed'}`}>
         <nav className="sidebar">
-          <div className="side-top">
-            <span className="logo-mark" aria-hidden="true">
-              DSH
-            </span>
-            <span className="nav-arrows" aria-hidden="true">
-              <Glyph>
-                <path d="M10.5 3.5L6 8l4.5 4.5" />
-              </Glyph>
-              <Glyph>
-                <path d="M5.5 3.5L10 8l-4.5 4.5" />
-              </Glyph>
-            </span>
-            <button
-              className="collapse-btn"
-              title="收起侧边栏"
-              aria-label="收起侧边栏"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <Glyph>
-                <path d="M9.5 3.5L5.5 8l4 4.5" />
-                <path d="M12.5 3.5V12.5" opacity="0.45" />
-              </Glyph>
-            </button>
-          </div>
-
           <div className="menu">
             {MENU.map((item) => (
               <button key={item.label} className="menu-item">
@@ -272,24 +294,10 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
 
         <div className="content-col">
           <header className="titlebar">
-            <span className="title-text">DeepSeek Harness</span>
             <WindowControls pin />
           </header>
 
           <main className="content">
-          {!sidebarOpen && (
-            <button
-              className="expand-fab"
-              title="展开侧边栏"
-              aria-label="展开侧边栏"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Glyph>
-                <path d="M6.5 3.5l4 4.5-4 4.5" />
-              </Glyph>
-            </button>
-          )}
-
           <div className="watermark" aria-hidden="true">
             DSH
           </div>
