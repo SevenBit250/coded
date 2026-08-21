@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { WindowControls } from '../components/WindowControls'
+import { AppMenu } from '../components/AppMenu'
 
 /** Main screen props. */
 export interface MainProps {
@@ -100,7 +101,7 @@ function SidebarTopRow({
         aria-label="收起或展开侧边栏"
         onClick={onToggle}
       >
-        DSH
+        C
       </button>
       <span className="nav-arrows" aria-hidden="true">
         <Glyph>
@@ -195,14 +196,21 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
       aria-label="主界面"
     >
       {/* The anchor strip is transparent and owns the window drag region
-          (full top width); the button group floats inside with no-drag
-          holes, so dragging works everywhere outside the buttons. No app
-          title in either state. */}
+          (full top width). Left group: logo/arrows/chat (no-drag holes).
+          Right group: the app command menu + window controls, same chrome
+          row as the caption buttons — hover and clicks work like the
+          system minimize/close buttons. No app title in either state. */}
       <div className="anchor-bar">
-        <SidebarTopRow
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
-          showChat={!sidebarOpen}
-        />
+        <div className="anchor-left">
+          <SidebarTopRow
+            onToggle={() => setSidebarOpen(!sidebarOpen)}
+            showChat={!sidebarOpen}
+          />
+        </div>
+        <div className="anchor-right">
+          <AppMenu />
+          <WindowControls />
+        </div>
       </div>
       <div className={`main-body ${sidebarOpen ? '' : 'collapsed'}`}>
         <nav className="sidebar">
@@ -293,13 +301,9 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
         </nav>
 
         <div className="content-col">
-          <header className="titlebar">
-            <WindowControls pin />
-          </header>
-
           <main className="content">
           <div className="watermark" aria-hidden="true">
-            DSH
+            C
           </div>
 
           <h1 className="greeting">{greeting()}</h1>
@@ -317,8 +321,8 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
             <textarea
               className="composer-input"
               rows={3}
-              placeholder="向 DSH 提问，使用 @ 添加上下文，使用 / 选择命令或能力"
-              aria-label="向 DSH 提问"
+              placeholder="向 Coded 提问，使用 @ 添加上下文，使用 / 选择命令或能力"
+              aria-label="向 Coded 提问"
             />
             <div className="composer-foot">
               <div className="composer-left">

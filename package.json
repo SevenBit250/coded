@@ -1,7 +1,8 @@
 {
-  "name": "dsh-desktop",
+  "name": "coded",
+  "productName": "Coded",
   "version": "0.1.0",
-  "description": "DeepSeek Harness desktop shell (Electron, Plan B) — frameless window, frosted-glass startup, electron-vite + React 18 + TypeScript.",
+  "description": "Coded — a DeepSeek Harness desktop shell (Electron, Plan B): frameless window, frosted-glass startup, electron-vite + React 18 + TypeScript.",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

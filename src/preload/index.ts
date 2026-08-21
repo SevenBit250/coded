@@ -15,7 +15,6 @@ const bridge: DshDesktopBridge = {
   maximize: () => ipcRenderer.send(IPC.window.maximize),
   close: () => ipcRenderer.send(IPC.window.close),
   isMaximized: () => ipcRenderer.invoke(IPC.window.isMaximized),
-  togglePinned: () => ipcRenderer.invoke(IPC.window.pin),
   /** Renderer signals first paint done and the glass is showing. */
   ready: () => ipcRenderer.send(IPC.shell.ready),
   /** Renderer signals the startup animation finished -> main view. */

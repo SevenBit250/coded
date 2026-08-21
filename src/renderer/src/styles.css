@@ -141,24 +141,6 @@ html[data-platform='win32'] .startup-chrome {
   transform: translateY(0);
 }
 
-/* ---------- content title bar (controls only, no drag) ----------
-   The top strip's drag region is owned by the anchor bar; this bar just
-   right-aligns the pin + system caption area. No app title. */
-.titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  height: 40px;
-  padding: 0 8px 0 0;
-  user-select: none;
-}
-
-/* Windows draws the real caption buttons (min/max/close) at the top-right;
-   keep the custom pin clear of that 46px × 3 zone. */
-html[data-platform='win32'] .titlebar {
-  padding-right: 146px;
-}
-
 /* ---------- window controls ---------- */
 .controls {
   -webkit-app-region: no-drag;
@@ -167,16 +149,16 @@ html[data-platform='win32'] .titlebar {
 }
 
 .ctl {
-  width: 36px;
-  height: 28px;
+  width: 46px;
+  height: 40px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 0;
   background: transparent;
   color: var(--text-faint);
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .ctl svg {
@@ -190,7 +172,7 @@ html[data-platform='win32'] .titlebar {
 }
 
 .ctl:hover {
-  background: rgba(20, 22, 26, 0.08);
+  background: rgb(225, 225, 227);
   color: var(--text);
 }
 
@@ -201,6 +183,161 @@ html[data-platform='win32'] .titlebar {
 .ctl.danger:hover {
   background: var(--danger);
   color: #fff;
+}
+
+/* ---------- application command menu (top-right) ---------- */
+.appmenu-root {
+  position: relative;
+  -webkit-app-region: no-drag;
+  margin-left: 4px;
+}
+
+.appmenu-btn {
+  width: 46px;
+  height: 40px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.appmenu-btn svg {
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Same caption-button behavior as the system buttons: a full-height square
+   hover zone. Colors sampled from the Win11 caption hover (rgb 225,225,227). */
+.appmenu-btn:hover,
+.appmenu-btn.active {
+  background: rgb(225, 225, 227);
+  color: var(--text);
+}
+
+.appmenu-btn:active {
+  background: #cfcfcf;
+}
+
+.appmenu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 50;
+  min-width: 232px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(20, 22, 30, 0.14);
+  padding: 6px;
+}
+
+.appmenu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.appmenu-item:hover {
+  background: rgba(20, 22, 26, 0.05);
+}
+
+.appmenu-shortcut {
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+.appmenu-divider {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--hairline);
+}
+
+/* ---------- about dialog ---------- */
+.about-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 22, 26, 0.28);
+}
+
+.about-card {
+  width: min(320px, 84%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(20, 22, 30, 0.22);
+  padding: 26px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.about-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--dark);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 24px;
+}
+
+.about-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.about-version {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.about-desc {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.about-close {
+  margin-top: 10px;
+  padding: 7px 22px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--dark);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.about-close:hover {
+  opacity: 0.85;
 }
 
 /* ---------- main layout: overlay drawer (ZCode style) ----------
@@ -326,8 +463,8 @@ html[data-platform='win32'] .titlebar {
 }
 
 /* Anchor strip: transparent, borderless, and the single owner of the top
-   drag region (full window width). The button group floats inside with
-   no-drag holes, so dragging works everywhere outside the buttons. */
+   drag region (full window width). Left group: logo row (no-drag holes).
+   Right group: app command menu + window controls, same chrome row. */
 .anchor-bar {
   position: absolute;
   top: 0;
@@ -337,17 +474,30 @@ html[data-platform='win32'] .titlebar {
   height: 40px;
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
   padding: 0 8px 0 10px;
   -webkit-app-region: drag;
   user-select: none;
   background: transparent;
 }
 
-/* Keep clear of the system caption buttons (Windows) so the strip never
-   covers them; the drag region under them is harmless. */
+.anchor-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.anchor-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Keep clear of the system caption buttons (Windows): the group is inset
+   ~9px for the rounded corner, so 136.5px lands our button's right edge
+   exactly on the minimize button's hover-zone left edge (0 gap). */
 html[data-platform='win32'] .anchor-bar {
-  padding-right: 146px;
+  padding-right: 136.5px;
 }
 
 .menu {

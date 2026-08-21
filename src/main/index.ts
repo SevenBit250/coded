@@ -93,7 +93,7 @@ function createWindow(): BrowserWindow {
     show: false,
     hasShadow: true,
     autoHideMenuBar: true,
-    title: 'DeepSeek Harness',
+    title: 'Coded',
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -141,13 +141,6 @@ function registerWindowControls(): void {
   })
   ipcMain.handle(IPC.window.isMaximized, (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
-  })
-  ipcMain.handle(IPC.window.pin, (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win === null) return false
-    const next = !win.isAlwaysOnTop()
-    win.setAlwaysOnTop(next)
-    return next
   })
 
   // Lifecycle handshake from the React renderer. `ready` is informational

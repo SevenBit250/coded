@@ -11,7 +11,6 @@ export const IPC = {
     maximize: 'window:maximize',
     close: 'window:close',
     isMaximized: 'window:is-maximized',
-    pin: 'window:pin',
   },
   shell: {
     ready: 'shell:ready',

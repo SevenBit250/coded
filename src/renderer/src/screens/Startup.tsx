@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import type { ReactElement } from 'react'
-import { WindowControls } from '../components/WindowControls'
 
 /** Startup screen props. */
 export interface StartupProps {
@@ -29,11 +28,10 @@ export function Startup({ visible, onDone }: StartupProps): ReactElement {
   return (
     <section className="screen startup" aria-label="启动中">
       <div className="startup-chrome">
-        <span className="startup-brand">DeepSeek Harness</span>
-        <WindowControls />
+        <span className="startup-brand">Coded</span>
       </div>
       <div className="startup-logo" aria-hidden="true">
-        DSH
+        C
       </div>
     </section>
   )
