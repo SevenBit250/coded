@@ -22,7 +22,11 @@ import { IPC } from '../shared/ipc'
 interface ChromeConfig {
   /** Frame-less window; the renderer draws its own controls + drag region. */
   frame: boolean
-  /** True transparency lets the glass read as a translucent card on any OS. */
+  /**
+   * True transparency on non-Windows (CSS rounds the corners). On Windows it
+   * is false: DWM will not round a transparent window, and native acrylic
+   * corners require a normal (non-transparent) top-level window.
+   */
   transparent: boolean
   /** Fully transparent canvas; CSS paints the glass over the material. */
   backgroundColor: string
@@ -42,7 +46,7 @@ interface ChromeConfig {
 
 const CHROME: ChromeConfig = {
   frame: false,
-  transparent: true,
+  transparent: process.platform !== 'win32',
   backgroundColor: '#00000000',
   useNativeAcrylic: process.platform === 'win32',
   roundedCorners: true,
@@ -124,6 +128,13 @@ function registerWindowControls(): void {
   })
   ipcMain.handle(IPC.window.isMaximized, (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
+  })
+  ipcMain.handle(IPC.window.pin, (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win === null) return false
+    const next = !win.isAlwaysOnTop()
+    win.setAlwaysOnTop(next)
+    return next
   })
 
   // Lifecycle handshake from the React renderer. `ready` is informational

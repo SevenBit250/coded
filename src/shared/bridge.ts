@@ -16,6 +16,8 @@ export interface DshDesktopBridge {
   close: () => void
   /** Resolve whether the host window is maximized (button glyph state). */
   isMaximized: () => Promise<boolean>
+  /** Toggle always-on-top; resolves the new pinned state. */
+  togglePinned: () => Promise<boolean>
   /** Renderer signals first paint is done and the glass is showing. */
   ready: () => void
   /** Renderer signals the startup animation finished -> main view. */
