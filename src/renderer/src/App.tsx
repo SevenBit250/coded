@@ -11,7 +11,7 @@ const BOOT_HOLD_MS = 1400
 
 /** Tuning aid: keep the startup ocean scene mounted, skip the main
  *  transition. Flip back to false (or remove) when done tuning. */
-const HOLD_ON_STARTUP = true
+const HOLD_ON_STARTUP = false
 
 /**
  * Root shell: drives the startup -> main transition.
