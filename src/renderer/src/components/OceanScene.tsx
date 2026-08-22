@@ -9,8 +9,8 @@ import type { ReactElement } from 'react'
  * dot-matrix look). Purely ambient — no pointer interaction. The field
  * occupies the bottom two-thirds of the screen and fades out toward the
  * top; overall alpha stays low so it blends with the translucent glass.
- * The centered mark is the shark line-art SVG (`public/shark-icon.svg`)
- * with a gentle CSS sway (`shark-sway`).
+ * The centered mark is the shark line-art SVG (`public/shark-icon.svg`),
+ * fixed under the dot layer.
  */
 
 /** Top fraction of the screen kept clear of particles. */
@@ -25,7 +25,7 @@ const DPR_CAP = 1.5
 const SPRITE = 24
 const SPRITE_CORE = 9
 /** Ink shades (lightest → deepest); brighter clusters pick the deeper end. */
-const SHADES = ['#6b7078', '#54585f', '#3f434b', '#2a2c33'] as const
+const SHADES = ['#9aa0a8', '#82878f', '#6b7078', '#54585f'] as const
 
 /** One ocean dot: pinned to its grid point; only its brightness moves. */
 interface Dot {
@@ -90,7 +90,7 @@ function buildField(w: number, h: number): Dot[] {
         phase: Math.random() * Math.PI * 2,
         speed: 0.8 + Math.random() * 0.4,
         size: 3 + Math.random() * 1.2,
-        alpha: 0.24 + Math.random() * 0.18,
+        alpha: 0.16 + Math.random() * 0.14,
       })
     }
   }
@@ -139,8 +139,8 @@ function draw(
 }
 
 /**
- * The full startup scene: particle matrix canvas plus the shark mark
- * swaying at center.
+ * The full startup scene: particle matrix canvas over the centered,
+ * motionless shark mark.
  */
 export function OceanScene(): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -191,8 +191,10 @@ export function OceanScene(): ReactElement {
 
   return (
     <div className="ocean-scene" aria-hidden="true">
-      <canvas ref={canvasRef} className="ocean-canvas" />
+      {/* The shark sits UNDER the particle canvas: dots drift across it,
+          which reads as the shark being submerged in the glowing sea. */}
       <img className="startup-shark" src="/shark-icon.svg" alt="" />
+      <canvas ref={canvasRef} className="ocean-canvas" />
     </div>
   )
 }
