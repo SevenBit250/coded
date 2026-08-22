@@ -29,9 +29,8 @@ export function Startup({ visible, onDone }: StartupProps): ReactElement {
   return (
     <section className="screen startup" aria-label="启动中">
       <OceanScene />
-      <div className="startup-chrome">
-        <span className="startup-brand">Coded</span>
-      </div>
+      {/* Empty chrome bar: owns the top drag region during startup. */}
+      <div className="startup-chrome" />
     </section>
   )
 }

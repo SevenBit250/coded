@@ -85,13 +85,7 @@ body {
   user-select: none;
 }
 
-.startup-brand {
-  font-weight: 650;
-  font-size: 13px;
-  color: rgba(20, 22, 26, 0.66);
-}
-
-/* Keep the startup brand clear of the system caption buttons on Windows. */
+/* Keep the startup chrome clear of the system caption buttons on Windows. */
 html[data-platform='win32'] .startup-chrome {
   padding-right: 146px;
 }

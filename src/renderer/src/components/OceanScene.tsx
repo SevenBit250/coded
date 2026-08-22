@@ -2,19 +2,15 @@ import { useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 
 /**
- * Startup ocean scene: a tight matrix of small rounded-square dots plus the
- * whale mark swaying at center. The dots never move — the motion comes from
- * a slow two-octave brightness field that sweeps organic clusters of dots in
- * and out, like light drifting across water (the deepseek.com/harness hero
- * dot-matrix look). Purely ambient — no pointer interaction. The field
- * occupies the bottom two-thirds of the screen and fades out toward the
- * top; overall alpha stays low so it blends with the translucent glass.
- * The centered mark is the shark line-art SVG (`public/shark-icon.svg`),
- * fixed under the dot layer.
+ * Startup ocean scene: a tight matrix of small rounded-square dots covering
+ * the whole window, with the shark mark fixed at center underneath. The
+ * dots never move — the motion comes from a two-octave brightness field
+ * that sweeps organic clusters of dots in and out, like light drifting
+ * across water (the deepseek.com/harness hero dot-matrix look). Purely
+ * ambient — no pointer interaction. Dots read slightly stronger toward the
+ * bottom; overall alpha stays low so it blends with the translucent glass.
  */
 
-/** Top fraction of the screen kept clear of particles. */
-const OCEAN_TOP = 1 / 3
 /** Grid pitch between dot centers (CSS px) — the reference matrix is tight. */
 const PITCH = 18
 /** Frame cap, matching the reference site. */
@@ -79,10 +75,10 @@ function makeSprite(color: string): HTMLCanvasElement {
   return c
 }
 
-/** Exact grid covering the ocean band. Rebuilt on resize. */
+/** Exact grid covering the whole window. Rebuilt on resize. */
 function buildField(w: number, h: number): Dot[] {
   const field: Dot[] = []
-  for (let gy = h * OCEAN_TOP + PITCH / 2; gy < h + PITCH; gy += PITCH) {
+  for (let gy = PITCH / 2; gy < h + PITCH; gy += PITCH) {
     for (let gx = PITCH / 2; gx < w + PITCH; gx += PITCH) {
       field.push({
         x: gx,
@@ -97,9 +93,9 @@ function buildField(w: number, h: number): Dot[] {
   return field
 }
 
-/** Draw one frame: dots hold their grid positions while a slow two-octave
- *  field sweeps bright islands across the matrix; deeper rows read slightly
- *  stronger, and the band fades in from its top boundary. */
+/** Draw one frame: dots hold their grid positions while a two-octave field
+ *  sweeps bright islands across the matrix; lower rows read slightly
+ *  stronger, giving the full-window field a sense of depth. */
 function draw(
   ctx: CanvasRenderingContext2D,
   field: Dot[],
@@ -109,20 +105,16 @@ function draw(
   t: number,
 ): void {
   ctx.clearRect(0, 0, w, h)
-  const top = h * OCEAN_TOP
-  const span = h - top
   for (const p of field) {
-    const depth = (p.y - top) / span
-    if (depth <= 0) continue
+    const depth = p.y / h
     const n =
-      Math.sin(p.x * 0.006 + t * 0.16) * Math.sin(p.y * 0.011 - t * 0.11) * 0.65 +
-      Math.sin(p.x * 0.017 - t * 0.07 + p.y * 0.009) * 0.35
+      Math.sin(p.x * 0.006 + t * 0.3) * Math.sin(p.y * 0.011 - t * 0.2) * 0.65 +
+      Math.sin(p.x * 0.017 - t * 0.13 + p.y * 0.009) * 0.35
     // Threshold the field into soft islands: outside them the dot is gone.
     const cluster = smooth01((n + 0.08) / 0.55)
     if (cluster <= 0.004) continue
-    const breathe = 0.8 + 0.2 * Math.sin(t * 1.4 * p.speed + p.phase)
-    const a =
-      smooth01(depth / 0.3) * cluster * breathe * p.alpha * (0.45 + 0.55 * depth)
+    const breathe = 0.8 + 0.2 * Math.sin(t * 1.9 * p.speed + p.phase)
+    const a = cluster * breathe * p.alpha * (0.55 + 0.45 * depth)
     if (a < 0.01) continue
     const core = p.size * (0.9 + 0.2 * cluster)
     const d = core * (SPRITE / SPRITE_CORE)
