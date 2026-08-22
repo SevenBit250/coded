@@ -43,6 +43,23 @@ function Glyph({
   )
 }
 
+/** One lucide line icon (Iconify, 24×24 viewBox, currentColor stroke). */
+function Lucide({ children }: { children: React.ReactNode }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      >
+        {children}
+      </g>
+    </svg>
+  )
+}
+
 interface MenuIconProps {
   name: MenuIconName
 }
@@ -83,40 +100,50 @@ function MenuIcon({ name }: MenuIconProps): ReactElement {
   }
 }
 
-/** Sidebar top row: logo (collapse/expand toggle) and back/forward arrows;
+/** Sidebar top row: sidebar expand/collapse toggle and back/forward arrows;
  *  the new-chat button only appears in the collapsed bar (reference).
  *  The title is intentionally absent in both states. */
 function SidebarTopRow({
   onToggle,
-  showChat = false,
+  collapsed = false,
 }: {
   onToggle: () => void
-  showChat?: boolean
+  collapsed?: boolean
 }): ReactElement {
   return (
     <>
       <button
-        className="logo-mark"
-        title="收起/展开侧边栏"
-        aria-label="收起或展开侧边栏"
+        className="sidebar-toggle"
+        title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
         onClick={onToggle}
       >
-        C
+        {/* lucide:panel-left-close / lucide:panel-left-open */}
+        <Lucide>
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <path d={collapsed ? 'M9 3v18m5-12 3 3-3 3' : 'M9 3v18m7-6-3-3 3-3'} />
+        </Lucide>
       </button>
-      <span className="nav-arrows" aria-hidden="true">
-        <Glyph>
-          <path d="M10.5 3.5L6 8l4.5 4.5" />
-        </Glyph>
-        <Glyph>
-          <path d="M5.5 3.5L10 8l-4.5 4.5" />
-        </Glyph>
+      <span className="nav-arrows">
+        {/* lucide:chevron-left / lucide:chevron-right; placeholder controls,
+            no navigation history yet */}
+        <button className="nav-arrow" title="后退" aria-label="后退">
+          <Lucide>
+            <path d="m15 18-6-6 6-6" />
+          </Lucide>
+        </button>
+        <button className="nav-arrow" title="前进" aria-label="前进">
+          <Lucide>
+            <path d="m9 18 6-6-6-6" />
+          </Lucide>
+        </button>
       </span>
-      {showChat && (
+      {collapsed && (
         <button className="chat-new" title="新建对话" aria-label="新建对话">
-          <Glyph>
-            <path d="M8 2.6c-3.2 0-5.7 2.2-5.7 5 0 1 .3 1.9.9 2.7L2.6 13.2l2.9-.9c.8.4 1.6.6 2.5.6 3.2 0 5.7-2.3 5.7-5.1S11.2 2.6 8 2.6z" />
-            <path d="M8 5.4v4M6 7.4h4" />
-          </Glyph>
+          {/* lucide:message-circle-plus */}
+          <Lucide>
+            <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719M8 12h8m-4-4v8" />
+          </Lucide>
         </button>
       )}
     </>
@@ -177,7 +204,7 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
         <div className="anchor-left">
           <SidebarTopRow
             onToggle={() => setSidebarOpen(!sidebarOpen)}
-            showChat={!sidebarOpen}
+            collapsed={!sidebarOpen}
           />
         </div>
         <div className="anchor-right">

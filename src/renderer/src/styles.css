@@ -429,42 +429,60 @@ html[data-platform='win32'] .startup-chrome {
 }
 
 /* ---------- sidebar ---------- */
-.logo-mark {
+.sidebar-toggle {
   -webkit-app-region: no-drag;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border: 0;
-  border-radius: 8px;
-  background: var(--dark);
-  color: #fff;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
   display: grid;
   place-items: center;
-  font-weight: 800;
-  font-size: 12px;
-  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: opacity 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.logo-mark:hover {
-  opacity: 0.85;
+.sidebar-toggle:hover {
+  background: rgba(20, 22, 26, 0.06);
+  color: var(--text);
+}
+
+.sidebar-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 
 .nav-arrows {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
   color: var(--text-faint);
+}
+
+/* Real buttons inside the drag region: no-drag or hover/click never fires. */
+.nav-arrow {
+  -webkit-app-region: no-drag;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-arrow:hover {
+  background: rgba(20, 22, 26, 0.06);
+  color: var(--text-dim);
 }
 
 .nav-arrows svg {
   width: 15px;
   height: 15px;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .chat-new {
@@ -474,7 +492,7 @@ html[data-platform='win32'] .startup-chrome {
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: var(--text-faint);
+  color: var(--text-dim);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -496,7 +514,7 @@ html[data-platform='win32'] .startup-chrome {
 
 .chat-new:hover {
   background: rgba(20, 22, 26, 0.06);
-  color: var(--text-dim);
+  color: var(--text);
 }
 
 .chat-new svg {
@@ -531,7 +549,7 @@ html[data-platform='win32'] .startup-chrome {
 .anchor-left {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
 }
 
 .anchor-right {
