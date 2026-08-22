@@ -1,0 +1,48 @@
+/* WindowControls — frameless chrome buttons (moved verbatim). */
+.controls {
+  -webkit-app-region: no-drag;
+  display: flex;
+  gap: 2px;
+}
+
+.ctl {
+  width: 46px;
+  height: 40px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-faint, #aab0bb);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.ctl svg {
+  width: 12px;
+  height: 12px;
+}
+
+.ctl:hover {
+  background: rgb(225, 225, 227);
+  color: var(--text, #26272d);
+}
+
+.ctl.active {
+  color: var(--accent, #e8734a);
+}
+
+.ctl.danger:hover {
+  background: #e34d59;
+  color: #fff;
+}
+
+/* Dark controls over the light glass during startup. */
+.startup .controls .ctl {
+  color: rgba(20, 22, 26, 0.72);
+}
+
+.startup .controls .ctl:hover {
+  background: rgba(20, 22, 26, 0.1);
+  color: rgba(20, 22, 26, 0.95);
+}

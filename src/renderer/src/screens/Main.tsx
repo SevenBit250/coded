@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { WindowControls } from '../components/WindowControls'
+import { Icon, IconButton, WindowControls } from '@uibase'
 import { AppMenu } from '../components/AppMenu'
 
 /** Main screen props. */
@@ -28,74 +28,42 @@ const MENU: readonly MenuItem[] = [
   { icon: 'market', label: '插件市场' },
 ]
 
-/** One small line-icon glyph (12–15px, currentColor stroke). */
-function Glyph({
-  className,
-  children,
-}: {
-  className?: string
-  children: React.ReactNode
-}): ReactElement {
-  return (
-    <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
-      {children}
-    </svg>
-  )
-}
-
-/** One lucide line icon (Iconify, 24×24 viewBox, currentColor stroke). */
-function Lucide({ children }: { children: React.ReactNode }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <g
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-      >
-        {children}
-      </g>
-    </svg>
-  )
-}
-
 interface MenuIconProps {
   name: MenuIconName
 }
 
-/** Menu line icon by name. */
+/** Menu line icon by name (hand-drawn 16-grid set). */
 function MenuIcon({ name }: MenuIconProps): ReactElement {
   switch (name) {
     case 'new-task':
       return (
-        <Glyph>
+        <Icon viewBox="0 0 16 16" strokeWidth={1.25}>
           <rect x="2.5" y="2.5" width="11" height="11" rx="2.5" />
           <path d="M8 5.4v5.2M5.4 8h5.2" />
-        </Glyph>
+        </Icon>
       )
     case 'search':
       return (
-        <Glyph>
+        <Icon viewBox="0 0 16 16" strokeWidth={1.25}>
           <circle cx="7" cy="7" r="4" />
           <path d="M10 10l3 3" />
-        </Glyph>
+        </Icon>
       )
     case 'automation':
       return (
-        <Glyph>
+        <Icon viewBox="0 0 16 16" strokeWidth={1.25}>
           <circle cx="8" cy="8" r="2.4" />
           <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.5 1.5M10.9 10.9l1.5 1.5M12.4 3.6l-1.5 1.5M5.1 10.9l-1.5 1.5" />
-        </Glyph>
+        </Icon>
       )
     case 'market':
       return (
-        <Glyph>
+        <Icon viewBox="0 0 16 16" strokeWidth={1.25}>
           <rect x="2.5" y="2.5" width="5" height="5" rx="1" />
           <rect x="8.5" y="2.5" width="5" height="5" rx="1" />
           <rect x="2.5" y="8.5" width="5" height="5" rx="1" />
           <rect x="8.5" y="8.5" width="5" height="5" rx="1" />
-        </Glyph>
+        </Icon>
       )
   }
 }
@@ -112,39 +80,51 @@ function SidebarTopRow({
 }): ReactElement {
   return (
     <>
-      <button
+      <IconButton
         className="sidebar-toggle"
-        title={collapsed ? '展开侧边栏' : '收起侧边栏'}
-        aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        label={collapsed ? '展开侧边栏' : '收起侧边栏'}
         onClick={onToggle}
-      >
-        {/* lucide:panel-left-close / lucide:panel-left-open */}
-        <Lucide>
-          <rect width="18" height="18" x="3" y="3" rx="2" />
-          <path d={collapsed ? 'M9 3v18m5-12 3 3-3 3' : 'M9 3v18m7-6-3-3 3-3'} />
-        </Lucide>
-      </button>
+        icon={
+          /* lucide:panel-left-close / lucide:panel-left-open */
+          <Icon>
+            <rect width="18" height="18" x="3" y="3" rx="2" />
+            <path d={collapsed ? 'M9 3v18m5-12 3 3-3 3' : 'M9 3v18m7-6-3-3 3-3'} />
+          </Icon>
+        }
+      />
       <span className="nav-arrows">
-        {/* lucide:chevron-left / lucide:chevron-right; placeholder controls,
-            no navigation history yet */}
-        <button className="nav-arrow" title="后退" aria-label="后退">
-          <Lucide>
-            <path d="m15 18-6-6 6-6" />
-          </Lucide>
-        </button>
-        <button className="nav-arrow" title="前进" aria-label="前进">
-          <Lucide>
-            <path d="m9 18 6-6-6-6" />
-          </Lucide>
-        </button>
+        {/* lucide:chevron-left / lucide:chevron-right; pale by default —
+            no navigation history has happened yet */}
+        <IconButton
+          className="nav-arrow"
+          label="后退"
+          icon={
+            <Icon>
+              <path d="m15 18-6-6 6-6" />
+            </Icon>
+          }
+        />
+        <IconButton
+          className="nav-arrow"
+          label="前进"
+          icon={
+            <Icon>
+              <path d="m9 18 6-6-6-6" />
+            </Icon>
+          }
+        />
       </span>
       {collapsed && (
-        <button className="chat-new" title="新建对话" aria-label="新建对话">
-          {/* lucide:message-circle-plus */}
-          <Lucide>
-            <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719M8 12h8m-4-4v8" />
-          </Lucide>
-        </button>
+        <IconButton
+          className="chat-new"
+          label="新建对话"
+          icon={
+            /* lucide:message-circle-plus */
+            <Icon>
+              <path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719M8 12h8m-4-4v8" />
+            </Icon>
+          }
+        />
       )}
     </>
   )
@@ -196,7 +176,7 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
       aria-label="主界面"
     >
       {/* The anchor strip is transparent and owns the window drag region
-          (full top width). Left group: logo/arrows/chat (no-drag holes).
+          (full top width). Left group: sidebar toggle/arrows/chat.
           Right group: the app command menu + window controls, same chrome
           row as the caption buttons — hover and clicks work like the
           system minimize/close buttons. No app title in either state. */}
@@ -209,7 +189,15 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
         </div>
         <div className="anchor-right">
           <AppMenu />
-          <WindowControls />
+          {/* Windows draws its own caption buttons via titleBarOverlay;
+              other platforms get the uibase chrome with IPC wired here. */}
+          {window.dshDesktop.platform !== 'win32' && (
+            <WindowControls
+              onMinimize={() => window.dshDesktop.minimize()}
+              onMaximize={() => window.dshDesktop.maximize()}
+              onClose={() => window.dshDesktop.close()}
+            />
+          )}
         </div>
       </div>
       <div className={`main-body ${sidebarOpen ? '' : 'collapsed'}`}>
@@ -230,27 +218,27 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
 
           <div className="tabs">
             <span className="tab">
-              <Glyph className="tab-ico">
+              <Icon className="tab-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                 <path d="M6 3.5v9M3.5 6h5" opacity="0.9" />
-              </Glyph>
+              </Icon>
               分组
             </span>
             <span className="tab active">
-              <Glyph className="tab-ico">
+              <Icon className="tab-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                 <path d="M2.5 4.2h4l1.3 1.5h5.7v6.1H2.5z" />
-              </Glyph>
+              </Icon>
               项目
             </span>
             <span className="tab-tools" aria-label="筛选与排序">
-              <Glyph className="tool-ico">
+              <Icon className="tool-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                 <path d="M4 11L11 4M11 4H6M11 4v5" />
-              </Glyph>
-              <Glyph className="tool-ico">
+              </Icon>
+              <Icon className="tool-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                 <path d="M3.5 5h9M5.5 8h5M7 11h2" />
-              </Glyph>
-              <Glyph className="tool-ico">
+              </Icon>
+              <Icon className="tool-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                 <path d="M3.5 4.5h9M5 4.5L6 13h4l1-8.5M6.5 7v4M9.5 7v4" />
-              </Glyph>
+              </Icon>
             </span>
           </div>
 
@@ -295,13 +283,13 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
               <span className="user-name">awei</span>
               <span className="pro-badge">Pro</span>
               <span className="user-icons" aria-hidden="true">
-                <Glyph className="user-ico">
+                <Icon className="user-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                   <path d="M4.5 3h7v10l-3.5-2.2L4.5 13z" />
-                </Glyph>
-                <Glyph className="user-ico">
+                </Icon>
+                <Icon className="user-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                   <circle cx="8" cy="8" r="2.4" />
                   <path d="M8 2.4v1.8M8 11.8v1.8M2.4 8h1.8M11.8 8h1.8" />
-                </Glyph>
+                </Icon>
               </span>
             </div>
           </div>

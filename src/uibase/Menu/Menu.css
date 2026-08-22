@@ -1,0 +1,72 @@
+/* Menu — anchored dropdown card (moved from the app menu styles). */
+.ui-menu {
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 50;
+  min-width: 232px;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #e6e8ee);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(20, 22, 30, 0.14);
+  padding: 6px;
+  transform-origin: top right;
+  animation: ui-menu-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ui-menu--closing {
+  animation: ui-menu-pop-out 0.11s ease both;
+}
+
+@keyframes ui-menu-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes ui-menu-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+
+.ui-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text, #26272d);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-menu-item:hover {
+  background: rgba(20, 22, 26, 0.05);
+}
+
+.ui-menu-shortcut {
+  font-size: 11.5px;
+  color: var(--text-faint, #aab0bb);
+}
+
+.ui-menu-divider {
+  height: 1px;
+  margin: 5px 6px;
+  background: var(--hairline, #eceef2);
+}

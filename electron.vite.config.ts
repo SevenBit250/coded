@@ -24,6 +24,7 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve(__dirname, 'src/renderer/src'),
+        '@uibase': resolve(__dirname, 'src/uibase'),
       },
     },
     plugins: [react()],
