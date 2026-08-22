@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactElement } from 'react'
+import { OceanScene } from '../components/OceanScene'
 
 /** Startup screen props. */
 export interface StartupProps {
@@ -11,9 +12,9 @@ export interface StartupProps {
 
 /**
  * Frosted-glass startup screen (Plan B chrome): the window stays transparent
- * so the native acrylic material blurs the desktop behind it, with a light
- * translucent tint and a centered dark logo — the reference look. The top
- * chrome (drag region + window controls) mirrors the main titlebar.
+ * so the native acrylic material blurs the desktop behind it. Above the glass
+ * tint sits the ocean scene — glow particles filling the bottom two-thirds,
+ * whale mark swaying at center. The top chrome (drag region) keeps the brand.
  */
 export function Startup({ visible, onDone }: StartupProps): ReactElement {
   useEffect(() => {
@@ -27,11 +28,9 @@ export function Startup({ visible, onDone }: StartupProps): ReactElement {
 
   return (
     <section className="screen startup" aria-label="启动中">
+      <OceanScene />
       <div className="startup-chrome">
         <span className="startup-brand">Coded</span>
-      </div>
-      <div className="startup-logo" aria-hidden="true">
-        C
       </div>
     </section>
   )

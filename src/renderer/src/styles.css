@@ -55,8 +55,8 @@ body {
 /* ============================================================
    Startup — frosted-glass overlay (reference effect)
    The window stays transparent so the native acrylic material
-   blurs the DESKTOP behind it; the layer only adds a light
-   translucent tint, a centered dark logo, and the chrome bar.
+   blurs the DESKTOP behind it; the layer adds a light translucent
+   tint, the particle ocean scene (below), and the chrome bar.
    ============================================================ */
 .startup {
   position: absolute;
@@ -106,22 +106,51 @@ html[data-platform='win32'] .startup-chrome {
   color: rgba(20, 22, 26, 0.95);
 }
 
-/* Centered dark rounded-square logo, white glyph. */
-.startup-logo {
+/* ---------- startup ocean scene ----------
+   The particle canvas fills the screen; the whale sprite (transparent PNG
+   with the sea-blue gradient baked in) sits centered above it. Both fade
+   in with the glass. */
+.ocean-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  animation: ocean-in 0.6s ease both;
+}
+
+@keyframes ocean-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ocean-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.startup-whale {
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 68px;
-  height: 68px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: #131417;
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 26px;
-  letter-spacing: 0.08em;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.25);
+  width: min(300px, 40%);
+  aspect-ratio: 914 / 590;
+  opacity: 0.92;
+  animation: whale-sway 7s ease-in-out infinite;
+}
+
+@keyframes whale-sway {
+  0%,
+  100% {
+    transform: translateY(5px) rotate(-1.7deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(1.9deg);
+  }
 }
 
 /* ============================================================
