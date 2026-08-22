@@ -375,10 +375,12 @@ html[data-platform='win32'] .startup-chrome {
 
 /* ---------- main layout: overlay drawer (ZCode style) ----------
    The sidebar stays in place; collapsing slides the content panel LEFT
-   over it (like a window covering the sidebar). */
+   over it (like a window covering the sidebar). The gray backdrop shows
+   behind the rounded white chat panel. */
 .main-body {
   position: relative;
   height: 100%;
+  background: var(--bg-soft);
 }
 
 .sidebar {
@@ -391,15 +393,14 @@ html[data-platform='win32'] .startup-chrome {
   display: flex;
   flex-direction: column;
   padding: 56px 10px 12px;
-  background: var(--bg-soft);
-  border-right: 1px solid var(--hairline);
+  background: transparent;
 }
 
 .content-col {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 240px;
+  left: 252px;
   right: 0;
   z-index: 5;
   min-width: 0;
@@ -407,6 +408,9 @@ html[data-platform='win32'] .startup-chrome {
   display: grid;
   grid-template-rows: auto 1fr;
   background: var(--bg);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--hairline), 0 10px 26px rgba(20, 22, 30, 0.04);
   transition: left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -594,8 +598,14 @@ html[data-platform='win32'] .anchor-bar {
   align-items: center;
   gap: 5px;
   padding: 5px 10px;
+  border-radius: 9px;
   color: var(--text-dim);
   cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.tab:hover {
+  background: rgba(20, 22, 26, 0.04);
 }
 
 .tab-ico {
@@ -609,9 +619,11 @@ html[data-platform='win32'] .anchor-bar {
 }
 
 .tab.active {
+  background: var(--surface);
   color: var(--text);
   font-weight: 650;
-  border-bottom: 2px solid var(--accent);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 1px 4px rgba(20, 22, 30, 0.06);
 }
 
 .tab-tools {
@@ -663,6 +675,14 @@ html[data-platform='win32'] .anchor-bar {
 
 .project:hover {
   background: rgba(20, 22, 26, 0.05);
+}
+
+.project.selected {
+  background: rgba(20, 22, 26, 0.07);
+}
+
+.project.selected .project-name {
+  font-weight: 650;
 }
 
 .project-name {
@@ -746,17 +766,19 @@ html[data-platform='win32'] .anchor-bar {
 }
 
 .pro-badge {
-  font-size: 10px;
-  color: #fff;
-  background: var(--dark);
-  padding: 1px 6px;
-  border-radius: 5px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  background: transparent;
+  padding: 1px 8px;
+  border-radius: 999px;
 }
 
 .user-icons {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 12px;
   color: var(--text-faint);
 }
 

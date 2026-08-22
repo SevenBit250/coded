@@ -166,11 +166,12 @@ const SUGGESTION_CARDS: readonly SuggestionCard[] = [
   { title: '自定义', desc: '跳过模板，直接告诉你想做什么。', custom: true },
 ]
 
-/** Time-of-day greeting (the reference opens with a "care" tone at night). */
+/** Time-of-day greeting (the reference opens with a "care" tone). */
 function greeting(): string {
   const hour = new Date().getHours()
   if (hour >= 23 || hour < 6) return '夜深啦，别忘了照顾好自己哦'
-  if (hour < 12) return '早上好，今天想做点什么？'
+  if (hour < 11) return '早上好，今天想做点什么？'
+  if (hour < 13) return '中午好呀，要不要先休息一下'
   if (hour < 18) return '下午好，继续推进吧'
   return '晚上好，别忘了照顾好自己哦'
 }
@@ -183,6 +184,7 @@ function greeting(): string {
  */
 export function Main({ shown, onShown }: MainProps): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedProject, setSelectedProject] = useState<string | null>(null)
 
   useEffect(() => {
     if (shown) return
@@ -243,13 +245,13 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
             </span>
             <span className="tab-tools" aria-label="筛选与排序">
               <Glyph className="tool-ico">
-                <path d="M2.5 5h11M2.5 8h11M2.5 11h11" opacity="0.8" />
-                <circle cx="10.5" cy="5" r="0.4" />
-                <circle cx="5.5" cy="8" r="0.4" />
-                <circle cx="8.5" cy="11" r="0.4" />
+                <path d="M4 11L11 4M11 4H6M11 4v5" />
               </Glyph>
               <Glyph className="tool-ico">
-                <path d="M5 3.5v9M5 3.5L3.2 5.3M5 3.5l1.8 1.8M11 12.5v-9M11 12.5l-1.8-1.8M11 12.5l1.8-1.8" />
+                <path d="M3.5 5h9M5.5 8h5M7 11h2" />
+              </Glyph>
+              <Glyph className="tool-ico">
+                <path d="M3.5 4.5h9M5 4.5L6 13h4l1-8.5M6.5 7v4M9.5 7v4" />
               </Glyph>
             </span>
           </div>
@@ -258,7 +260,11 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
 
           <div className="projects">
             {PROJECTS.map((project) => (
-              <button key={project.name} className="project">
+              <button
+                key={project.name}
+                className={`project ${selectedProject === project.name ? 'selected' : ''}`}
+                onClick={() => setSelectedProject(project.name)}
+              >
                 <span className="project-name">
                   <svg className="folder" viewBox="0 0 16 16">
                     <path d="M2.5 4h4l1.3 1.5h5.7v6H2.5z" />
@@ -292,6 +298,9 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
               <span className="pro-badge">Pro</span>
               <span className="user-icons" aria-hidden="true">
                 <Glyph className="user-ico">
+                  <path d="M4.5 3h7v10l-3.5-2.2L4.5 13z" />
+                </Glyph>
+                <Glyph className="user-ico">
                   <circle cx="8" cy="8" r="2.4" />
                   <path d="M8 2.4v1.8M8 11.8v1.8M2.4 8h1.8M11.8 8h1.8" />
                 </Glyph>
@@ -313,7 +322,7 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
               <svg className="folder" viewBox="0 0 16 16">
                 <path d="M2.5 4h4l1.3 1.5h5.7v6H2.5z" />
               </svg>
-              <span className="selector">选择项目</span>
+              <span className="selector">{selectedProject ?? '选择项目'}</span>
               <svg className="chev" viewBox="0 0 12 12">
                 <path d="M3 4.5l3 3 3-3" />
               </svg>
