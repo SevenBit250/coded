@@ -9,6 +9,10 @@ type ShellPhase = 'startup' | 'entering' | 'main'
 /** How long the glass startup screen holds before entering the main UI (ms). */
 const BOOT_HOLD_MS = 1400
 
+/** Tuning aid: keep the startup ocean scene mounted, skip the main
+ *  transition. Flip back to false (or remove) when done tuning. */
+const HOLD_ON_STARTUP = true
+
 /**
  * Root shell: drives the startup -> main transition.
  *
@@ -31,6 +35,7 @@ export function App(): ReactElement {
   useEffect(() => {
     // Signal first paint so the main process can show the window.
     window.dshDesktop.ready()
+    if (HOLD_ON_STARTUP) return
     const timer = setTimeout(beginTransition, BOOT_HOLD_MS)
     return () => clearTimeout(timer)
   }, [beginTransition])

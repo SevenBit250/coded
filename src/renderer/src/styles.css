@@ -107,9 +107,8 @@ html[data-platform='win32'] .startup-chrome {
 }
 
 /* ---------- startup ocean scene ----------
-   The particle canvas fills the screen; the whale sprite (transparent PNG
-   with the sea-blue gradient baked in) sits centered above it. Both fade
-   in with the glass. */
+   The particle canvas fills the screen; the shark line-art SVG sits
+   centered above it with a gentle sway. Both fade in with the glass. */
 .ocean-scene {
   position: absolute;
   inset: 0;
@@ -133,17 +132,16 @@ html[data-platform='win32'] .startup-chrome {
   height: 100%;
 }
 
-.startup-whale {
+.startup-shark {
   position: absolute;
   inset: 0;
   margin: auto;
-  width: min(300px, 40%);
-  aspect-ratio: 914 / 590;
-  opacity: 0.92;
-  animation: whale-sway 7s ease-in-out infinite;
+  width: min(230px, 30%);
+  opacity: 0.75;
+  animation: shark-sway 7s ease-in-out infinite;
 }
 
-@keyframes whale-sway {
+@keyframes shark-sway {
   0%,
   100% {
     transform: translateY(5px) rotate(-1.7deg);

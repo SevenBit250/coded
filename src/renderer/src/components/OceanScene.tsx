@@ -2,41 +2,41 @@ import { useEffect, useRef } from 'react'
 import type { ReactElement } from 'react'
 
 /**
- * Startup ocean scene: a canvas of glowing rounded-square particles
- * simulating gentle sea swell, plus the whale mark swaying at center.
- * Purely ambient — no pointer interaction. The field occupies the bottom
- * two-thirds of the screen and fades out toward the top; overall alpha is
- * kept low so the scene blends with the translucent glass startup screen.
+ * Startup ocean scene: a tight matrix of small rounded-square dots plus the
+ * whale mark swaying at center. The dots never move — the motion comes from
+ * a slow two-octave brightness field that sweeps organic clusters of dots in
+ * and out, like light drifting across water (the deepseek.com/harness hero
+ * dot-matrix look). Purely ambient — no pointer interaction. The field
+ * occupies the bottom two-thirds of the screen and fades out toward the
+ * top; overall alpha stays low so it blends with the translucent glass.
+ * The centered mark is the shark line-art SVG (`public/shark-icon.svg`)
+ * with a gentle CSS sway (`shark-sway`).
  */
 
 /** Top fraction of the screen kept clear of particles. */
 const OCEAN_TOP = 1 / 3
-/** Grid pitch between particle anchor points (CSS px). */
-const PITCH = 34
-/** Per-particle random offset from its grid anchor (CSS px). */
-const JITTER = 9
+/** Grid pitch between dot centers (CSS px) — the reference matrix is tight. */
+const PITCH = 18
 /** Frame cap, matching the reference site. */
 const FRAME_MS = 1000 / 30
 /** HiDPI cap; the field is soft enough that 1.5 is indistinguishable. */
 const DPR_CAP = 1.5
-/** Sprite canvas size; the glowing core occupies the center square. */
-const SPRITE = 33
-const SPRITE_CORE = 10
-/** Sea-blue shades (deep → bright), sampled from the DeepSeek hero palette. */
-const SHADES = ['#16305e', '#1f4480', '#2f5fa3', '#5b8bc7'] as const
+/** Sprite canvas size; the dot core occupies the center square. */
+const SPRITE = 24
+const SPRITE_CORE = 9
+/** Ink shades (lightest → deepest); brighter clusters pick the deeper end. */
+const SHADES = ['#6b7078', '#54585f', '#3f434b', '#2a2c33'] as const
 
-/** One ocean particle: anchored to a grid point, waving around it. */
-interface Particle {
-  /** Anchor position (CSS px). */
+/** One ocean dot: pinned to its grid point; only its brightness moves. */
+interface Dot {
+  /** Grid position (CSS px). */
   x: number
   y: number
-  /** Per-particle phase so neighbors do not move in lockstep. */
+  /** Per-dot phase so the breathing does not move in lockstep. */
   phase: number
-  /** Wave speed multiplier, 0.8–1.2. */
+  /** Breathing speed multiplier, 0.8–1.2. */
   speed: number
-  /** Index into the sprite table. */
-  shade: number
-  /** Core edge length before the breathing scale (CSS px). */
+  /** Core edge length before the cluster scale (CSS px). */
   size: number
   /** Base alpha; the field stays semi-transparent against the glass. */
   alpha: number
@@ -56,7 +56,8 @@ function smooth01(t: number): number {
   return x * x * (3 - 2 * x)
 }
 
-/** Pre-render one glow sprite: radial halo plus a rounded-square core. */
+/** Pre-render one dot sprite: a flat rounded-square core with a tight,
+ *  subtle halo (the reference dots glow very little). */
 function makeSprite(color: string): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = SPRITE
@@ -65,44 +66,43 @@ function makeSprite(color: string): HTMLCanvasElement {
   if (g === null) return c
   const mid = SPRITE / 2
   const halo = g.createRadialGradient(mid, mid, 1, mid, mid, mid)
-  halo.addColorStop(0, tint(color, 0.5))
-  halo.addColorStop(0.45, tint(color, 0.16))
+  halo.addColorStop(0, tint(color, 0.22))
+  halo.addColorStop(0.55, tint(color, 0.07))
   halo.addColorStop(1, tint(color, 0))
   g.fillStyle = halo
   g.fillRect(0, 0, SPRITE, SPRITE)
   const off = (SPRITE - SPRITE_CORE) / 2
-  g.fillStyle = tint(color, 0.9)
+  g.fillStyle = tint(color, 0.95)
   g.beginPath()
-  g.roundRect(off, off, SPRITE_CORE, SPRITE_CORE, SPRITE_CORE * 0.3)
+  g.roundRect(off, off, SPRITE_CORE, SPRITE_CORE, SPRITE_CORE * 0.28)
   g.fill()
   return c
 }
 
-/** Jittered grid covering the ocean band. Rebuilt on resize, so anchors
- *  reshuffle — acceptable for a brief splash, and cheap. */
-function buildField(w: number, h: number): Particle[] {
-  const field: Particle[] = []
+/** Exact grid covering the ocean band. Rebuilt on resize. */
+function buildField(w: number, h: number): Dot[] {
+  const field: Dot[] = []
   for (let gy = h * OCEAN_TOP + PITCH / 2; gy < h + PITCH; gy += PITCH) {
     for (let gx = PITCH / 2; gx < w + PITCH; gx += PITCH) {
       field.push({
-        x: gx + (Math.random() * 2 - 1) * JITTER,
-        y: gy + (Math.random() * 2 - 1) * JITTER,
+        x: gx,
+        y: gy,
         phase: Math.random() * Math.PI * 2,
         speed: 0.8 + Math.random() * 0.4,
-        shade: (Math.random() * SHADES.length) | 0,
-        size: 2.6 + Math.random() * 2.2,
-        alpha: 0.22 + Math.random() * 0.38,
+        size: 3 + Math.random() * 1.2,
+        alpha: 0.24 + Math.random() * 0.18,
       })
     }
   }
   return field
 }
 
-/** Draw one frame: two traveling swells plus per-particle breathing,
- *  alpha fading in from the ocean's top boundary. */
+/** Draw one frame: dots hold their grid positions while a slow two-octave
+ *  field sweeps bright islands across the matrix; deeper rows read slightly
+ *  stronger, and the band fades in from its top boundary. */
 function draw(
   ctx: CanvasRenderingContext2D,
-  field: Particle[],
+  field: Dot[],
   sprites: HTMLCanvasElement[],
   w: number,
   h: number,
@@ -112,32 +112,35 @@ function draw(
   const top = h * OCEAN_TOP
   const span = h - top
   for (const p of field) {
-    const swell = Math.sin(p.x * 0.011 - t * 0.9 * p.speed + p.phase * 0.35)
-    const chop = Math.sin(p.x * 0.023 + p.y * 0.014 - t * 1.7 + p.phase)
-    const x = p.x + Math.cos(p.x * 0.008 - t * 0.6 + p.phase) * 3
-    const y = p.y + swell * 9 + chop * 3.5
-    const depth = (y - top) / span
+    const depth = (p.y - top) / span
     if (depth <= 0) continue
-    // Depth perspective: deeper particles are larger, brighter, and the
-    // band fades in quickly from its top boundary.
-    const fade = smooth01(depth / 0.3)
-    const scale = 0.45 + 0.55 * depth
-    const breathe = 0.72 + 0.28 * Math.sin(t * 1.6 * p.speed + p.phase * 2.3)
-    const a = fade * breathe * p.alpha * (0.35 + 0.65 * depth)
+    const n =
+      Math.sin(p.x * 0.006 + t * 0.16) * Math.sin(p.y * 0.011 - t * 0.11) * 0.65 +
+      Math.sin(p.x * 0.017 - t * 0.07 + p.y * 0.009) * 0.35
+    // Threshold the field into soft islands: outside them the dot is gone.
+    const cluster = smooth01((n + 0.08) / 0.55)
+    if (cluster <= 0.004) continue
+    const breathe = 0.8 + 0.2 * Math.sin(t * 1.4 * p.speed + p.phase)
+    const a =
+      smooth01(depth / 0.3) * cluster * breathe * p.alpha * (0.45 + 0.55 * depth)
     if (a < 0.01) continue
-    const core = p.size * scale * (0.85 + 0.3 * chop)
+    const core = p.size * (0.9 + 0.2 * cluster)
     const d = core * (SPRITE / SPRITE_CORE)
     ctx.globalAlpha = a
-    ctx.drawImage(sprites[p.shade], x - d / 2, y - d / 2, d, d)
+    ctx.drawImage(
+      sprites[Math.min(SHADES.length - 1, (cluster * SHADES.length) | 0)],
+      p.x - d / 2,
+      p.y - d / 2,
+      d,
+      d,
+    )
   }
   ctx.globalAlpha = 1
 }
 
 /**
- * The full startup scene. The whale is the app's own mark
- * (`public/whale.png`, a transparent sprite with the sea-blue gradient
- * baked in — no mask tricks, so it composites cleanly over the acrylic
- * window); the sway lives in CSS (`whale-sway`).
+ * The full startup scene: particle matrix canvas plus the shark mark
+ * swaying at center.
  */
 export function OceanScene(): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -150,7 +153,7 @@ export function OceanScene(): ReactElement {
 
     const sprites = SHADES.map(makeSprite)
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    let field: Particle[] = []
+    let field: Dot[] = []
     let w = 0
     let h = 0
     let raf = 0
@@ -189,7 +192,7 @@ export function OceanScene(): ReactElement {
   return (
     <div className="ocean-scene" aria-hidden="true">
       <canvas ref={canvasRef} className="ocean-canvas" />
-      <img className="startup-whale" src="/whale.png" alt="" />
+      <img className="startup-shark" src="/shark-icon.svg" alt="" />
     </div>
   )
 }
