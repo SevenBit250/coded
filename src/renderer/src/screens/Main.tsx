@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { Icon, IconButton, WindowControls } from '@uibase'
-import { AppMenu } from '../components/AppMenu'
 
 /** Main screen props. */
 export interface MainProps {
@@ -177,9 +176,8 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
     >
       {/* The anchor strip is transparent and owns the window drag region
           (full top width). Left group: sidebar toggle/arrows/chat.
-          Right group: the app command menu + window controls, same chrome
-          row as the caption buttons — hover and clicks work like the
-          system minimize/close buttons. No app title in either state. */}
+          Right group: window controls only (on Windows those are the
+          system caption buttons). No app title in either state. */}
       <div className="anchor-bar">
         <div className="anchor-left">
           <SidebarTopRow
@@ -188,7 +186,6 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
           />
         </div>
         <div className="anchor-right">
-          <AppMenu />
           {/* Windows draws its own caption buttons via titleBarOverlay;
               other platforms get the uibase chrome with IPC wired here. */}
           {window.dshDesktop.platform !== 'win32' && (
