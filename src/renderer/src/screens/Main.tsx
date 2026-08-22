@@ -137,35 +137,6 @@ const PROJECTS: readonly ProjectEntry[] = [
   { name: '未命名项目' },
 ]
 
-/** Quick-compose suggestion row. */
-interface QuickAction {
-  emoji: string
-  text: string
-}
-
-const QUICK_ACTIONS: readonly QuickAction[] = [
-  { emoji: '📅', text: '每周五总结这一周发生的事情' },
-  {
-    emoji: '🩺',
-    text: '请分析以下终端报错日志，找出导致该错误的根本原因，并提供可以直接运行的修复代码示例',
-  },
-  { emoji: '🎨', text: '帮我创建一份科技感十足的PPT，主题是「AI Agent 进化之路」' },
-]
-
-/** Bottom suggestion card. */
-interface SuggestionCard {
-  title: string
-  desc: string
-  /** The last card is the open-ended "custom" entry. */
-  custom?: boolean
-}
-
-const SUGGESTION_CARDS: readonly SuggestionCard[] = [
-  { title: 'Git 站会摘要', desc: '每周五总结这一周发生的事情。' },
-  { title: 'CI 失败与不稳定测试报告', desc: '汇总近期 CI 失败和不稳定测试，分析可能原因。' },
-  { title: '自定义', desc: '跳过模板，直接告诉你想做什么。', custom: true },
-]
-
 /** Time-of-day greeting (the reference opens with a "care" tone). */
 function greeting(): string {
   const hour = new Date().getHours()
@@ -179,8 +150,8 @@ function greeting(): string {
 /**
  * Main workspace — ZCode-like shell (placeholder until the dsh React client
  * mounts here over the Plan B custom protocol): collapsible sidebar with nav
- * and projects, a welcoming content column (watermark, greeting, composer,
- * quick actions, suggestion cards), and window chrome top-right.
+ * and projects, a welcoming content column (watermark, greeting, composer),
+ * and window chrome top-right.
  */
 export function Main({ shown, onShown }: MainProps): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -373,28 +344,6 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
                 </button>
               </div>
             </div>
-          </div>
-
-          <div className="quick">
-            {QUICK_ACTIONS.map((action) => (
-              <button key={action.text} className="quick-row">
-                <span className="quick-emoji">{action.emoji}</span>
-                <span>{action.text}</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="notice">
-            🧩 订阅用户新功能体验：创建「闲时任务」，我们将免费在算力富余时段为你完成指派任务。
-          </p>
-
-          <div className="cards">
-            {SUGGESTION_CARDS.map((card) => (
-              <button key={card.title} className={`card ${card.custom === true ? 'custom' : ''}`}>
-                <h3>{card.title}</h3>
-                <p>{card.desc}</p>
-              </button>
-            ))}
           </div>
         </main>
         </div>

@@ -50,8 +50,9 @@ const CHROME: ChromeConfig = {
   backgroundColor: '#00000000',
   useNativeAcrylic: process.platform === 'win32',
   roundedCorners: true,
-  width: 1280,
-  height: 820,
+  // Opens at the minimum size; the user may enlarge afterward.
+  width: 940,
+  height: 620,
   minWidth: 940,
   minHeight: 620,
 }
