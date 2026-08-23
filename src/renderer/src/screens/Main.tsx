@@ -298,18 +298,24 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
             C
           </div>
 
-          <h1 className="greeting">{greeting()}</h1>
+          {/* Centered in the conversation area: the composer anchors the
+              center; the greeting rides a fixed 26px above the card. */}
+          <div className="composer-anchor">
+            <h1 className="greeting">{greeting()}</h1>
 
           <div className="composer">
             <div className="composer-head">
-              <svg className="folder" viewBox="0 0 16 16">
-                <path d="M2.5 4h4l1.3 1.5h5.7v6H2.5z" />
-              </svg>
+              {/* lucide:folder */}
+              <Icon className="head-ico">
+                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+              </Icon>
               <span className="selector">{selectedProject ?? '选择项目'}</span>
-              <svg className="chev" viewBox="0 0 12 12">
-                <path d="M3 4.5l3 3 3-3" />
-              </svg>
+              {/* lucide:chevron-down */}
+              <Icon className="chip-chev">
+                <path d="m6 9l6 6 6-6" />
+              </Icon>
             </div>
+            <div className="composer-body">
             <textarea
               className="composer-input"
               rows={3}
@@ -319,43 +325,53 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
             <div className="composer-foot">
               <div className="composer-left">
                 <button className="plus-btn" aria-label="添加内容">
-                  ＋
+                  {/* lucide:plus */}
+                  <Icon>
+                    <path d="M5 12h14m-7-7v14" />
+                  </Icon>
                 </button>
                 <button className="access-chip">
-                  <svg className="access-ico" viewBox="0 0 16 16">
-                    <circle cx="8" cy="8" r="5.6" opacity="0.6" />
-                    <circle cx="8" cy="8" r="2.2" />
-                  </svg>
+                  {/* lucide:shield */}
+                  <Icon className="access-ico">
+                    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+                  </Icon>
                   完全访问
-                  <svg className="chev" viewBox="0 0 12 12">
-                    <path d="M3 4.5l3 3 3-3" />
-                  </svg>
+                  <Icon className="chip-chev">
+                    <path d="m6 9l6 6l6-6" />
+                  </Icon>
                 </button>
               </div>
               <div className="composer-right">
                 <button className="model-chip">
+                  {/* provider mark placeholder: plain circle */}
+                  <Icon className="model-mark">
+                    <circle cx="12" cy="12" r="9" />
+                  </Icon>
                   deepseek-chat
-                  <svg className="chev" viewBox="0 0 12 12">
-                    <path d="M3 4.5l3 3 3-3" />
-                  </svg>
+                  <Icon className="chip-chev">
+                    <path d="m6 9l6 6l6-6" />
+                  </Icon>
                 </button>
                 <button className="model-chip">
-                  <svg className="gauge-ico" viewBox="0 0 16 16">
-                    <circle cx="8" cy="8" r="5.6" opacity="0.5" />
-                    <path d="M8 8l3.4-2" />
-                  </svg>
+                  {/* lucide:gauge */}
+                  <Icon className="gauge-ico">
+                    <path d="m12 14l4-4M3.34 19a10 10 0 1 1 17.32 0" />
+                  </Icon>
                   最高
-                  <svg className="chev" viewBox="0 0 12 12">
-                    <path d="M3 4.5l3 3 3-3" />
-                  </svg>
+                  <Icon className="chip-chev">
+                    <path d="m6 9l6 6l6-6" />
+                  </Icon>
                 </button>
                 <button className="send-btn" aria-label="发送">
-                  <svg viewBox="0 0 14 14">
-                    <path d="M7 11V3M3.5 6L7 2.5 10.5 6" />
-                  </svg>
+                  {/* lucide:arrow-up */}
+                  <Icon>
+                    <path d="m5 12l7-7 7 7m-7 7V5" />
+                  </Icon>
                 </button>
               </div>
             </div>
+            </div>
+          </div>
           </div>
         </main>
         </div>

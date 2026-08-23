@@ -178,7 +178,7 @@ html[data-platform='win32'] .startup-chrome {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: 1fr;
   background: var(--bg);
   border-radius: var(--radius);
   overflow: hidden;
@@ -552,57 +552,82 @@ html[data-platform='win32'] .anchor-bar {
   white-space: nowrap;
 }
 
+/* Centering anchor: the composer card is exactly centered in the
+   conversation area; the greeting is pinned a fixed 26px above the card
+   (bottom: 100% + gap tracks the card top edge however tall it gets). */
+.composer-anchor {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(660px, 92%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .greeting {
-  position: relative;
+  position: absolute;
+  bottom: calc(100% + 26px);
   z-index: 1;
-  margin-top: 148px;
   font-size: 26px;
   font-weight: 700;
   color: #2e3138;
+  white-space: nowrap;
 }
 
-/* ---------- composer card ---------- */
+/* ---------- composer card ----------
+   Reference look: a gray card (the composer) holds the project selector
+   directly on its background, and a white rounded send box inside wraps
+   the input area plus the footer action row. */
 .composer {
   position: relative;
   z-index: 1;
-  width: min(660px, 92%);
-  margin-top: 26px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(20, 22, 30, 0.05);
+  width: 100%;
+  background: var(--bg-soft);
+  border-radius: 14px;
 }
 
 .composer-head {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 11px 14px 2px;
-  font-size: 13px;
+  padding: 9px 9px 7px;
+  font-size: 12.5px;
   color: var(--text-dim);
 }
 
-.composer-head .folder {
-  width: 15px;
-  height: 15px;
-  stroke: currentColor;
-  stroke-width: 1.2;
-  fill: none;
-  stroke-linejoin: round;
+/* The white send box inside the gray card: input + footer actions. Flush
+   with the card's sides and bottom, so its bottom corners take the card's
+   outer radius. */
+.composer-body {
+  background: var(--surface);
+  border-radius: 10px 10px 14px 14px;
+  box-shadow: 0 2px 10px rgba(20, 22, 30, 0.08), 0 1px 2px rgba(20, 22, 30, 0.05);
+}
+
+.composer-head .head-ico {
+  width: 14px;
+  height: 14px;
 }
 
 .selector {
   cursor: pointer;
 }
 
+.chip-chev {
+  width: 11px;
+  height: 11px;
+}
+
 .composer-input {
   display: block;
   width: 100%;
-  min-height: 92px;
+  min-height: 68px;
   resize: none;
   border: 0;
   background: transparent;
-  padding: 6px 14px 8px;
+  padding: 10px 14px 6px;
   font: inherit;
   font-size: 14px;
   color: var(--text);
@@ -617,7 +642,7 @@ html[data-platform='win32'] .anchor-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 8px 8px 10px;
+  padding: 4px 10px 10px;
 }
 
 .composer-left {
@@ -633,8 +658,14 @@ html[data-platform='win32'] .anchor-bar {
   border-radius: 8px;
   background: transparent;
   color: var(--text-dim);
-  font-size: 17px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
+}
+
+.plus-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .plus-btn:hover {
@@ -655,19 +686,16 @@ html[data-platform='win32'] .anchor-bar {
 .access-ico {
   width: 14px;
   height: 14px;
-  stroke: currentColor;
-  stroke-width: 1.3;
-  fill: none;
-  stroke-linecap: round;
 }
 
 .gauge-ico {
   width: 13px;
   height: 13px;
-  stroke: currentColor;
-  stroke-width: 1.3;
-  fill: none;
-  stroke-linecap: round;
+}
+
+.model-mark {
+  width: 10px;
+  height: 10px;
 }
 
 .composer-right {
@@ -713,11 +741,6 @@ html[data-platform='win32'] .anchor-bar {
 .send-btn svg {
   width: 14px;
   height: 14px;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 @media (prefers-reduced-motion: reduce) {
