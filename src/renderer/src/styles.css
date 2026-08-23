@@ -568,10 +568,10 @@ html[data-platform='win32'] .anchor-bar {
 
 .greeting {
   position: absolute;
-  bottom: calc(100% + 26px);
+  bottom: calc(100% + 48px);
   z-index: 1;
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 32px;
+  font-weight: 400;
   color: #2e3138;
   white-space: nowrap;
 }
@@ -583,7 +583,8 @@ html[data-platform='win32'] .anchor-bar {
 .composer {
   position: relative;
   z-index: 1;
-  width: 100%;
+  min-width: 90%;
+  max-width: 100%;
   background: var(--bg-soft);
   border-radius: 14px;
 }
