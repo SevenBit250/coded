@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
 import { Icon, IconButton, Split, Tooltip, WindowControls } from '@uibase'
+import type { ThemeName } from '../theme'
 
 /** Main screen props. */
 export interface MainProps {
@@ -8,6 +9,11 @@ export interface MainProps {
   shown: boolean
   /** Called after the enter transition so the parent can settle its phase. */
   onShown: () => void
+  /** Active theme (the toggle shows where a click leads). Temporary wiring
+   *  until a real settings surface exists. */
+  theme: ThemeName
+  /** Flip light <-> dark. */
+  onToggleTheme: () => void
 }
 
 /** Sidebar menu icon names (line icons matching the reference). */
@@ -167,7 +173,7 @@ function greeting(): string {
  * and projects, resizable by dragging the sash on its right edge; a welcoming
  * content column (watermark, greeting, composer), and window chrome top-right.
  */
-export function Main({ shown, onShown }: MainProps): ReactElement {
+export function Main({ shown, onShown, theme, onToggleTheme }: MainProps): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
@@ -289,6 +295,26 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
               </span>
               <span className="user-name">awei</span>
               <span className="pro-badge">Pro</span>
+              {/* Temporary theme toggle, pending a real settings surface. */}
+              <IconButton
+                className="theme-toggle"
+                label={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
+                onClick={onToggleTheme}
+                icon={
+                  theme === 'dark' ? (
+                    /* lucide:sun */
+                    <Icon>
+                      <circle cx="12" cy="12" r="4" />
+                      <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                    </Icon>
+                  ) : (
+                    /* lucide:moon */
+                    <Icon>
+                      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                    </Icon>
+                  )
+                }
+              />
               <span className="user-icons" aria-hidden="true">
                 <Icon className="user-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
                   <path d="M4.5 3h7v10l-3.5-2.2L4.5 13z" />

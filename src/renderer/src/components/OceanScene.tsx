@@ -20,8 +20,10 @@ const DPR_CAP = 1.5
 /** Sprite canvas size; the dot core occupies the center square. */
 const SPRITE = 24
 const SPRITE_CORE = 9
-/** Ink shades (lightest → deepest); brighter clusters pick the deeper end. */
-const SHADES = ['#9aa0a8', '#82878f', '#6b7078', '#54585f'] as const
+/** Ink shades (lightest → deepest); brighter clusters pick the deeper end.
+ *  On dark glass the "ink" is light, so the deep end is the brightest dot. */
+const LIGHT_SHADES = ['#9aa0a8', '#82878f', '#6b7078', '#54585f'] as const
+const DARK_SHADES = ['#4a4f57', '#5f656e', '#787f89', '#939aa4'] as const
 
 /** One ocean dot: pinned to its grid point; only its brightness moves. */
 interface Dot {
@@ -120,7 +122,7 @@ function draw(
     const d = core * (SPRITE / SPRITE_CORE)
     ctx.globalAlpha = a
     ctx.drawImage(
-      sprites[Math.min(SHADES.length - 1, (cluster * SHADES.length) | 0)],
+      sprites[Math.min(sprites.length - 1, (cluster * sprites.length) | 0)],
       p.x - d / 2,
       p.y - d / 2,
       d,
@@ -132,9 +134,9 @@ function draw(
 
 /**
  * The full startup scene: particle matrix canvas over the centered,
- * motionless shark mark.
+ * motionless shark mark. `dark` swaps the dot palette for the dark glass.
  */
-export function OceanScene(): ReactElement {
+export function OceanScene({ dark = false }: { dark?: boolean }): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -143,7 +145,7 @@ export function OceanScene(): ReactElement {
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
 
-    const sprites = SHADES.map(makeSprite)
+    const sprites = (dark ? DARK_SHADES : LIGHT_SHADES).map(makeSprite)
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     let field: Dot[] = []
     let w = 0
@@ -179,7 +181,7 @@ export function OceanScene(): ReactElement {
       cancelAnimationFrame(raf)
       ro.disconnect()
     }
-  }, [])
+  }, [dark])
 
   return (
     <div className="ocean-scene" aria-hidden="true">

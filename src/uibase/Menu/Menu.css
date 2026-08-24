@@ -8,7 +8,7 @@
   background: var(--surface, #ffffff);
   border: 1px solid var(--border, #e6e8ee);
   border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(20, 22, 30, 0.14);
+  box-shadow: 0 12px 32px rgba(var(--shadow-rgb, 20, 22, 30), 0.14);
   padding: 6px;
   transform-origin: top right;
   animation: ui-menu-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -57,7 +57,7 @@
 }
 
 .ui-menu-item:hover {
-  background: rgba(20, 22, 26, 0.05);
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.05);
 }
 
 .ui-menu-shortcut {

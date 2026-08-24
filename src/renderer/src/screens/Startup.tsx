@@ -8,6 +8,8 @@ export interface StartupProps {
   visible: boolean
   /** Called after the leave animation when the screen is no longer visible. */
   onDone: () => void
+  /** Dark glass variant (particle palette swaps; the shark inverts via CSS). */
+  dark?: boolean
 }
 
 /**
@@ -16,7 +18,7 @@ export interface StartupProps {
  * tint sits the ocean scene — glow particles filling the bottom two-thirds,
  * whale mark swaying at center. The top chrome (drag region) keeps the brand.
  */
-export function Startup({ visible, onDone }: StartupProps): ReactElement {
+export function Startup({ visible, onDone, dark = false }: StartupProps): ReactElement {
   useEffect(() => {
     if (visible) return
     // Give the leave animation time to finish before unmounting.
@@ -28,7 +30,7 @@ export function Startup({ visible, onDone }: StartupProps): ReactElement {
 
   return (
     <section className="screen startup" aria-label="启动中">
-      <OceanScene />
+      <OceanScene dark={dark} />
       {/* Empty chrome bar: owns the top drag region during startup. */}
       <div className="startup-chrome" />
     </section>

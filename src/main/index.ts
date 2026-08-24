@@ -72,8 +72,9 @@ function createWindow(): BrowserWindow {
     minHeight: CHROME.minHeight,
     // Windows: WinUI 3 style title bar — hidden chromeless frame with the
     // system caption buttons (min/max/close, Snap Layouts, red close hover)
-    // drawn by Windows through titleBarOverlay. Other platforms: frameless
-    // with custom-rendered controls.
+    // drawn by Windows through titleBarOverlay. The overlay stays transparent
+    // at all times so the acrylic/glass shows through. Other platforms:
+    // frameless with custom-rendered controls.
     ...(process.platform === 'win32'
       ? {
           titleBarStyle: 'hidden' as const,

@@ -24,7 +24,7 @@
 }
 
 .ctl:hover {
-  background: rgb(225, 225, 227);
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.08);
   color: var(--text, #26272d);
 }
 
@@ -33,16 +33,16 @@
 }
 
 .ctl.danger:hover {
-  background: #e34d59;
-  color: #fff;
+  background: var(--danger, #e34d59);
+  color: var(--on-dark, #fff);
 }
 
-/* Dark controls over the light glass during startup. */
+/* Ink-colored controls over the translucent glass during startup. */
 .startup .controls .ctl {
-  color: rgba(20, 22, 26, 0.72);
+  color: rgba(var(--ink-rgb, 20, 22, 26), 0.72);
 }
 
 .startup .controls .ctl:hover {
-  background: rgba(20, 22, 26, 0.1);
-  color: rgba(20, 22, 26, 0.95);
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.1);
+  color: rgba(var(--ink-rgb, 20, 22, 26), 0.95);
 }

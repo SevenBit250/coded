@@ -5,7 +5,7 @@
   z-index: 100;
   display: grid;
   place-items: center;
-  background: rgba(20, 22, 26, 0.28);
+  background: var(--overlay-bg, rgba(20, 22, 26, 0.28));
 }
 
 .ui-dialog-card {
@@ -13,7 +13,7 @@
   background: var(--surface, #ffffff);
   border: 1px solid var(--border, #e6e8ee);
   border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(20, 22, 30, 0.22);
+  box-shadow: 0 20px 48px rgba(var(--shadow-rgb, 20, 22, 30), 0.22);
   padding: 26px 24px 20px;
   display: flex;
   flex-direction: column;

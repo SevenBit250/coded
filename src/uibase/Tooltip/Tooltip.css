@@ -18,7 +18,7 @@
   border: 1px solid var(--hairline, #eceef2);
   border-radius: 8px;
   background: var(--surface, #ffffff);
-  box-shadow: 0 4px 14px rgba(20, 22, 30, 0.1), 0 1px 3px rgba(20, 22, 30, 0.06);
+  box-shadow: 0 4px 14px rgba(var(--shadow-rgb, 20, 22, 30), 0.1), 0 1px 3px rgba(var(--shadow-rgb, 20, 22, 30), 0.06);
   color: var(--text, #26272d);
   font-size: 12px;
   line-height: 1.4;
