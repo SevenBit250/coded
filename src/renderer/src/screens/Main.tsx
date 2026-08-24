@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, WindowControls } from '@uibase'
+import { Icon, IconButton, Split, WindowControls } from '@uibase'
 
 /** Main screen props. */
 export interface MainProps {
@@ -26,6 +26,14 @@ const MENU: readonly MenuItem[] = [
   { icon: 'automation', label: '自动化' },
   { icon: 'market', label: '插件市场' },
 ]
+
+/** Sidebar geometry (px): default/min/max width, plus the backdrop strip
+ *  between the sidebar and the content panel that the Split sash fills.
+ *  The minimum is the designed width — below it the tabs row wraps. */
+const SIDEBAR_DEFAULT = 240
+const SIDEBAR_MIN = 240
+const SIDEBAR_MAX = 480
+const SIDEBAR_GAP = 3
 
 interface MenuIconProps {
   name: MenuIconName
@@ -156,11 +164,13 @@ function greeting(): string {
 /**
  * Main workspace — ZCode-like shell (placeholder until the dsh React client
  * mounts here over the Plan B custom protocol): collapsible sidebar with nav
- * and projects, a welcoming content column (watermark, greeting, composer),
- * and window chrome top-right.
+ * and projects, resizable by dragging the sash on its right edge; a welcoming
+ * content column (watermark, greeting, composer), and window chrome top-right.
  */
 export function Main({ shown, onShown }: MainProps): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
+  const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
 
   useEffect(() => {
@@ -171,7 +181,7 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
 
   return (
     <section
-      className={`screen main ${shown ? 'entered' : 'entering'}`}
+      className={`screen main ${shown ? 'entered' : 'entering'}${resizing ? ' resizing' : ''}`}
       aria-label="主界面"
     >
       {/* The anchor strip is transparent and owns the window drag region
@@ -197,8 +207,8 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
           )}
         </div>
       </div>
-      <div className={`main-body ${sidebarOpen ? '' : 'collapsed'}`}>
-        <nav className="sidebar">
+      <div className={`main-body${sidebarOpen ? '' : ' collapsed'}`}>
+        <nav className="sidebar" style={{ width: sidebarWidth }}>
           <div className="menu">
             {MENU.map((item) => (
               <button key={item.label} className="menu-item">
@@ -292,7 +302,28 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
           </div>
         </nav>
 
-        <div className="content-col">
+        {/* The sash fills the backdrop strip between the sidebar and the
+            content panel; hidden when collapsed (the panel then covers the
+            sidebar edge to edge). While it is dragged, `resizing` strips
+            the panel's collapse transition so it tracks the pointer. */}
+        {sidebarOpen && (
+          <Split
+            className="sidebar-split"
+            style={{ left: sidebarWidth }}
+            label="调整侧栏宽度"
+            value={sidebarWidth}
+            min={SIDEBAR_MIN}
+            max={SIDEBAR_MAX}
+            onChange={setSidebarWidth}
+            onDragStart={() => setResizing(true)}
+            onDragEnd={() => setResizing(false)}
+          />
+        )}
+
+        <div
+          className="content-col"
+          style={{ left: sidebarOpen ? sidebarWidth + SIDEBAR_GAP : 0 }}
+        >
           <main className="content">
           <div className="watermark" aria-hidden="true">
             C

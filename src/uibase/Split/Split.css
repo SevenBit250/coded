@@ -1,0 +1,47 @@
+/* Split — draggable sash between split-layout panes.
+   Invisible at rest, on hover, and while dragging (the resize cursor and
+   the live-resizing panes are the only affordances); a centered hairline
+   shows only for keyboard focus. Theme variables fall back to neutral
+   grays so the library renders sensibly without the app theme. */
+.ui-split {
+  -webkit-app-region: no-drag;
+  position: relative;
+  flex: none;
+  width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.ui-split[data-orientation='vertical'] {
+  width: auto;
+  height: 12px;
+  cursor: row-resize;
+}
+
+.ui-split::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  margin-left: -0.5px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.ui-split[data-orientation='vertical']::after {
+  top: 50%;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 1px;
+  margin-left: 0;
+  margin-top: -0.5px;
+}
+
+.ui-split:focus-visible::after {
+  background: var(--text-faint, #aab0bb);
+}

@@ -160,7 +160,7 @@ html[data-platform='win32'] .startup-chrome {
   top: 0;
   bottom: 0;
   left: 0;
-  width: 240px;
+  /* width comes inline from Main.tsx state; the Split sash resizes it. */
   z-index: 1;
   display: flex;
   flex-direction: column;
@@ -172,7 +172,8 @@ html[data-platform='win32'] .startup-chrome {
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 252px;
+  /* left comes inline from Main.tsx (sidebar width + gap; 0 when collapsed);
+     the transition animates the collapse slide. */
   right: 0;
   z-index: 5;
   min-width: 0;
@@ -186,8 +187,40 @@ html[data-platform='win32'] .startup-chrome {
   transition: left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.main-body.collapsed .content-col {
-  left: 0;
+/* While the Split sash is dragged, the panel tracks the pointer exactly (no
+   transition) and the resize cursor + selection guard hold app-wide. */
+.main.resizing .content-col,
+.main.resizing .sidebar-split {
+  transition: none;
+}
+
+.main.resizing,
+.main.resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Sidebar Split sash: fills the 3px backdrop strip between the sidebar and
+   the content panel (left is inline, tracking the sidebar width). Sits above
+   the anchor bar so the strip's full height is grabbable — it costs a 3px
+   column of window-drag region. The transition matches the panel's so
+   keyboard nudges ease in sync with it. */
+.sidebar-split {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 11;
+  width: 3px;
+  transition: left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The indicator line rides the content panel's left edge — the visible
+   junction between sidebar and chat area, which already carries the panel's
+   1px hairline shadow — instead of floating at the strip's center. */
+.sidebar-split::after {
+  left: auto;
+  right: 0;
+  margin-left: 0;
 }
 
 /* ---------- sidebar ----------
