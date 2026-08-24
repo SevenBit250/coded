@@ -1,0 +1,61 @@
+/* Tooltip — hover/focus bubble anchored to a trigger.
+   The anchor wrapper stays layout-neutral; the bubble is portaled to <body>
+   and fixed-positioned, so clipping ancestors cannot cut it. It never
+   intercepts the pointer (that would flicker the hover state). Theme
+   variables fall back to neutral grays so the library renders sensibly
+   without the app theme. */
+.ui-tip {
+  display: inline-flex;
+}
+
+.ui-tip-bubble {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--hairline, #eceef2);
+  border-radius: 8px;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 4px 14px rgba(20, 22, 30, 0.1), 0 1px 3px rgba(20, 22, 30, 0.06);
+  color: var(--text, #26272d);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  animation: ui-tip-in 0.15s ease;
+}
+
+/* Exit runs on the same element kept mounted; unmount happens on
+   animationend in the component. `forwards` holds the final frame. */
+.ui-tip-bubble.leaving {
+  animation: ui-tip-out 0.12s ease forwards;
+}
+
+.ui-tip-shortcut {
+  color: var(--text-faint, #aab0bb);
+}
+
+@keyframes ui-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes ui-tip-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}

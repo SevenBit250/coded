@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, Split, WindowControls } from '@uibase'
+import { Icon, IconButton, Split, Tooltip, WindowControls } from '@uibase'
 
 /** Main screen props. */
 export interface MainProps {
@@ -373,16 +373,18 @@ export function Main({ shown, onShown }: MainProps): ReactElement {
                 </button>
               </div>
               <div className="composer-right">
-                <button className="model-chip">
-                  {/* provider mark placeholder: plain circle */}
-                  <Icon className="model-mark">
-                    <circle cx="12" cy="12" r="9" />
-                  </Icon>
-                  deepseek-chat
-                  <Icon className="chip-chev">
-                    <path d="m6 9l6 6l6-6" />
-                  </Icon>
-                </button>
+                <Tooltip label="选择模型" shortcut="Ctrl+M" placement="top-left">
+                  <button className="model-chip">
+                    {/* provider mark placeholder: plain circle */}
+                    <Icon className="model-mark">
+                      <circle cx="12" cy="12" r="9" />
+                    </Icon>
+                    deepseek-chat
+                    <Icon className="chip-chev">
+                      <path d="m6 9l6 6l6-6" />
+                    </Icon>
+                  </button>
+                </Tooltip>
                 <button className="model-chip">
                   {/* lucide:gauge */}
                   <Icon className="gauge-ico">
