@@ -65,10 +65,11 @@ body {
 }
 
 /* ---------- screens ---------- */
+/* No screen animates: the startup -> main handoff is one atomic swap
+   (Startup unmounts and Main uncovers in the same commit). */
 .screen {
   position: absolute;
   inset: 0;
-  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ============================================================
@@ -82,12 +83,25 @@ body {
   inset: 0;
   z-index: 10;
   background: var(--glass-tint);
-  transition: opacity 0.5s ease;
 }
 
-.startup.leaving {
+/* Whitening backdrop: fades in above the glass tint, below the ocean scene
+   (paint order inside the .startup stacking context) — the dots keep
+   drifting over solidifying white. Its color equals the workspace backdrop,
+   so the eventual hard swap lands on identical pixels. Animating this
+   layer's opacity is compositor-only work. */
+.startup::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--bg);
   opacity: 0;
-  pointer-events: none;
+}
+
+.startup.whitening::after {
+  opacity: 1;
+  transition: opacity 0.45s ease; /* keep in sync with WHITEN_MS */
 }
 
 .startup-chrome {
@@ -155,14 +169,11 @@ html[data-theme='dark'] .startup-shark {
   background: var(--bg);
 }
 
-.main.entering {
+/* Pre-mounted but not yet uncovered: the workspace hides under the startup
+   glass from MAIN_PREMOUNT_MS so the phase swap paints without a gap. */
+.main-premount {
   opacity: 0;
-  transform: translateY(8px);
-}
-
-.main.entered {
-  opacity: 1;
-  transform: translateY(0);
+  pointer-events: none;
 }
 
 /* ---------- window controls ----------

@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { Icon, IconButton, Split, Tooltip, WindowControls } from '@uibase'
 import type { ThemeName } from '../theme'
 
 /** Main screen props. */
 export interface MainProps {
-  /** Whether the enter transition has completed (adds the `entered` state). */
-  shown: boolean
-  /** Called after the enter transition so the parent can settle its phase. */
-  onShown: () => void
+  /** Whether the shell has swapped to this screen. While false the workspace
+   *  sits pre-mounted at opacity 0 under the startup glass; the flip happens
+   *  in the same commit that unmounts Startup — one paint, no gap. */
+  visible: boolean
   /** Active theme (the toggle shows where a click leads). Temporary wiring
    *  until a real settings surface exists. */
   theme: ThemeName
@@ -174,21 +174,15 @@ function greeting(): string {
  * and projects, resizable by dragging the sash on its right edge; a welcoming
  * content column (watermark, greeting, composer), and window chrome top-right.
  */
-export function Main({ shown, onShown, theme, onToggleTheme }: MainProps): ReactElement {
+export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (shown) return
-    const t = setTimeout(onShown, 300)
-    return () => clearTimeout(t)
-  }, [shown, onShown])
-
   return (
     <section
-      className={`screen main ${shown ? 'entered' : 'entering'}${resizing ? ' resizing' : ''}`}
+      className={`screen main${visible ? '' : ' main-premount'}${resizing ? ' resizing' : ''}`}
       aria-label="主界面"
     >
       {/* The anchor strip is transparent and owns the window drag region
