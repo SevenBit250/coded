@@ -87,9 +87,9 @@ function place(
  * Hover/focus tooltip bubble. The trigger is wrapped in a positioning
  * anchor; the bubble itself is portaled to <body> and fixed-positioned, so
  * overflow-clipping ancestors (scroll areas, rounded panels) cannot cut it.
- * The bubble never intercepts the pointer, and it dismisses on Escape,
- * scroll, or window resize. Hiding plays a short exit animation; the bubble
- * unmounts when that animation ends.
+ * The bubble never intercepts the pointer, and it dismisses on a click on
+ * the trigger, on scroll, or on window resize. Hiding plays a short exit
+ * animation; the bubble unmounts when that animation ends.
  */
 export function Tooltip({
   label,
@@ -118,7 +118,8 @@ export function Tooltip({
   const handleEnter = (): void => {
     timer.current = window.setTimeout(show, delay)
   }
-  const handleLeave = (): void => {
+  /** Leave and click both dismiss; a pending show timer must not fire later. */
+  const dismiss = (): void => {
     if (timer.current !== null) {
       clearTimeout(timer.current)
       timer.current = null
@@ -142,15 +143,10 @@ export function Tooltip({
   // Dismissal routes that don't come from the anchor itself.
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') hide()
-    }
     const onDismiss = (): void => hide()
-    window.addEventListener('keydown', onKey)
     window.addEventListener('resize', onDismiss)
     window.addEventListener('scroll', onDismiss, true)
     return () => {
-      window.removeEventListener('keydown', onKey)
       window.removeEventListener('resize', onDismiss)
       window.removeEventListener('scroll', onDismiss, true)
     }
@@ -171,9 +167,10 @@ export function Tooltip({
         className="ui-tip"
         aria-describedby={open ? id : undefined}
         onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
+        onMouseLeave={dismiss}
         onFocus={show}
-        onBlur={hide}
+        onBlur={dismiss}
+        onClick={dismiss}
       >
         {children}
       </span>

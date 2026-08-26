@@ -41,6 +41,14 @@
   padding: 0;
 }
 
+/* Buttons: no focus ring — focus feedback comes from the tooltip, and
+   Chromium's default ring (OS accent colored, flips on after click + any
+   keypress) clashes with the chrome. */
+button:focus,
+button:focus-visible {
+  outline: 2px solid transparent;
+}
+
 html,
 body,
 #root {

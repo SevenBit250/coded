@@ -1,36 +1,30 @@
 import type { ReactElement, ReactNode } from 'react'
+import { MetaButton } from '../MetaButton'
+import type { MetaButtonProps } from '../MetaButton'
 import './IconButton.css'
 
-/** IconButton props. */
-export interface IconButtonProps {
+/** IconButton props: MetaButton plus an icon slot. */
+export interface IconButtonProps extends Omit<MetaButtonProps, 'children'> {
   /** The icon node (usually a uibase `Icon`). */
   icon: ReactNode
-  /** Accessible name; doubles as the tooltip. */
-  label: string
-  onClick?: () => void
-  /** Extra class for app-side theming (color overrides, entry animation). */
-  className?: string
 }
 
 /**
- * Ghost icon button for chrome/sidebar toolbars: transparent until hovered.
- * Always `no-drag` — these sit inside the window's drag region, and drag
- * regions swallow pointer events before hover/click can fire.
+ * Ghost icon button for chrome/sidebar toolbars — MetaButton with the icon
+ * square chrome (.ui-iconbtn) and an icon slot. Tooltip and global shortcut
+ * behavior come from MetaButton.
  */
 export function IconButton({
   icon,
-  label,
-  onClick,
   className,
+  ...rest
 }: IconButtonProps): ReactElement {
   return (
-    <button
-      className={`ui-iconbtn${className !== undefined ? ` ${className}` : ''}`}
-      title={label}
-      aria-label={label}
-      onClick={onClick}
+    <MetaButton
+      {...rest}
+      className={className !== undefined ? `ui-iconbtn ${className}` : 'ui-iconbtn'}
     >
       {icon}
-    </button>
+    </MetaButton>
   )
 }

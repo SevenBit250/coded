@@ -95,7 +95,8 @@ function SidebarTopRow({
     <>
       <IconButton
         className="sidebar-toggle"
-        label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+        label="切换侧边栏"
+        shortcut="Mod+B"
         onClick={onToggle}
         icon={
           /* lucide:panel-left-close / lucide:panel-left-open */

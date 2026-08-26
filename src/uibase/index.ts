@@ -10,6 +10,8 @@
  */
 export { Icon } from './Icon'
 export type { IconProps } from './Icon'
+export { MetaButton } from './MetaButton'
+export type { MetaButtonProps } from './MetaButton'
 export { IconButton } from './IconButton'
 export type { IconButtonProps } from './IconButton'
 export { Menu, MenuItem, MenuDivider } from './Menu'

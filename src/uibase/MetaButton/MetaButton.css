@@ -1,0 +1,10 @@
+/* MetaButton — base button chrome shared by uibase buttons. Variants
+   (IconButton, later text/chip buttons) layer their own sizing and hover
+   styles on top. */
+.ui-metabtn {
+  -webkit-app-region: no-drag;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
