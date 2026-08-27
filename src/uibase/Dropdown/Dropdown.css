@@ -1,0 +1,248 @@
+/* Dropdown — pill trigger + portaled select panel.
+   Styling tokens follow the uibase convention: theme vars with fallbacks. */
+
+/* ---------- trigger ---------- */
+.ui-dd {
+  display: inline-flex;
+  position: relative;
+}
+
+/* ZCode-matching trigger: invisible chrome at rest (flat icon+label+chevron
+   on the composer surface); hovering summons BOTH the pill backdrop and the
+   clear affordance, and the open panel pins the pill until dismissal. */
+.ui-dd-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text, #26272d);
+  font-size: 12.5px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ui-dd-trigger:hover,
+.ui-dd-trigger[aria-expanded='true'] {
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.06);
+}
+
+.ui-dd-trigger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ui-dd-ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-dim, #7d828d);
+}
+
+.ui-dd-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-dd-chev {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--text-faint, #aab0bb);
+  transition: transform 0.18s ease;
+}
+
+.ui-dd-trigger[aria-expanded='true'] .ui-dd-chev {
+  transform: rotate(180deg);
+}
+
+/* Head icon slot: the folder always anchors the pill's left edge; with a
+   value picked, the clear × stacks over it and the pair crossfades on hover.
+   The fade-out is scoped to the FILLED trigger so the placeholder state
+   keeps its folder while hovered. */
+.ui-dd-slot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.ui-dd-fold {
+  width: 14px;
+  height: 14px;
+  color: var(--text-dim, #7d828d);
+  transition: opacity 0.15s ease;
+}
+
+.ui-dd-trigger--filled:hover .ui-dd-fold {
+  opacity: 0;
+}
+
+/* Clear button (only rendered with a value): transparent at rest, revealed
+   while the pointer rests on the trigger so the resting chip stays clean.
+   Deliberately NOT keyed off :focus-visible — the shell refocuses the
+   trigger after each selection, which would otherwise pin the button visible
+   forever. It overlays the folder slot exactly and keeps the bare-× look;
+   direct hover adds your subtle circle back. */
+.ui-dd-clear {
+  position: absolute;
+  inset: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.12s ease, opacity 0.15s ease;
+  opacity: 0;
+}
+
+.ui-dd-trigger:hover .ui-dd-clear {
+  opacity: 1;
+}
+
+.ui-dd-clear:hover {
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.1);
+}
+
+.ui-dd-x {
+  width: 10px;
+  height: 10px;
+  color: var(--text-dim, #7d828d);
+}
+
+/* ---------- panel ----------
+   Proportion notes: the panel targets a near-square silhouette (height ≈
+   0.9 × width at the common 4-option loadout) — tight row rhythm, a wider
+   body than the min-content, and an internally-scrolling option area so a
+   long workspace list never turns the card into a tower. */
+.ui-dd-panel {
+  position: fixed;
+  z-index: 60;
+  min-width: 292px;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface, #ffffff);
+  border: 1px solid var(--border, #e6e8ee);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(var(--shadow-rgb, 20, 22, 30), 0.14);
+  transform-origin: top left;
+  animation: ui-dd-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ui-dd-panel--closing {
+  animation: ui-dd-pop-out 0.11s ease both;
+}
+
+@keyframes ui-dd-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes ui-dd-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+
+.ui-dd-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline, #eceef2);
+}
+
+.ui-dd-search-ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-faint, #aab0bb);
+}
+
+.ui-dd-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text, #26272d);
+}
+
+.ui-dd-search-input::placeholder {
+  color: var(--text-faint, #aab0bb);
+}
+
+.ui-dd-list {
+  max-height: 218px;
+  overflow-y: auto;
+  padding: 5px;
+}
+
+/* Hover/keyboard-shared highlight row. */
+.ui-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6.5px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text, #26272d);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-dd-item:hover,
+.ui-dd-item--hot {
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.05);
+}
+
+.ui-dd-item .ui-dd-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.ui-dd-check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-dim, #7d828d);
+}
+
+.ui-dd-empty {
+  padding: 12px 10px;
+  font-size: 12.5px;
+  color: var(--text-faint, #aab0bb);
+  text-align: center;
+}
+
+.ui-dd-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--hairline, #eceef2);
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, Split, Tooltip, WindowControls } from '@uibase'
+import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown } from '@uibase'
 import type { ThemeName } from '../theme'
 
 /** Main screen props. */
@@ -357,15 +357,20 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
 
           <div className="composer">
             <div className="composer-head">
-              {/* lucide:folder */}
-              <Icon className="head-ico">
-                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-              </Icon>
-              <span className="selector">{selectedProject ?? '选择项目'}</span>
-              {/* lucide:chevron-down */}
-              <Icon className="chip-chev">
-                <path d="m6 9l6 6 6-6" />
-              </Icon>
+              <Dropdown
+                options={PROJECTS.map((p) => ({ id: p.name, label: p.name }))}
+                value={selectedProject}
+                onChange={setSelectedProject}
+                actions={[
+                  { id: 'open-folder', label: '打开文件夹' },
+                  { id: 'remote-connect', label: '远程连接' },
+                ]}
+                onAction={(id) => {
+                  // TODO(dsh wiring): open-folder -> pickWorkspace; remote -> connect flow.
+                  void id
+                }}
+                noneLabel="不在项目中工作"
+              />
             </div>
             <div className="composer-body">
             <textarea

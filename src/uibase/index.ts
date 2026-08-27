@@ -18,6 +18,13 @@ export { Menu, MenuItem, MenuDivider } from './Menu'
 export type { MenuProps, MenuItemProps } from './Menu'
 export { Dialog } from './Dialog'
 export type { DialogProps } from './Dialog'
+export { Dropdown } from './Dropdown'
+export type {
+  DropdownProps,
+  DropdownOption,
+  DropdownAction,
+  DropdownPlacement,
+} from './Dropdown'
 export { Split } from './Split'
 export type { SplitProps } from './Split'
 export { Tooltip } from './Tooltip'
