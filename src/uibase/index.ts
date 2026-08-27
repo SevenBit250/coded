@@ -46,6 +46,8 @@ export type {
 } from './Dropdown'
 export { Split } from './Split'
 export type { SplitProps } from './Split'
+export { ScrollArea } from './ScrollArea'
+export type { ScrollAreaProps } from './ScrollArea'
 export { Tooltip } from './Tooltip'
 export type { TooltipPlacement, TooltipProps } from './Tooltip'
 export { ThemeProvider, toCssVars } from './ThemeProvider'

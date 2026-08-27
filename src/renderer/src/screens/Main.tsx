@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown, MetaButton } from '@uibase'
+import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown, MetaButton, ScrollArea } from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 
@@ -18,7 +18,7 @@ export interface MainProps {
 }
 
 /** Sidebar menu icon names (line icons matching the reference). */
-type MenuIconName = 'new-task' | 'search' | 'automation' | 'market'
+type MenuIconName = 'new-task' | 'search' | 'connector' | 'market'
 
 /** Sidebar menu entry. */
 interface MenuItem {
@@ -30,13 +30,12 @@ interface MenuItem {
 const MENU: readonly MenuItem[] = [
   { icon: 'new-task', label: '新建任务', shortcut: 'Ctrl+N' },
   { icon: 'search', label: '搜索', shortcut: 'Ctrl+K' },
-  { icon: 'automation', label: '自动化' },
+  { icon: 'connector', label: '连接器' },
   { icon: 'market', label: '插件市场' },
 ]
 
 /** Sidebar geometry (px): default/min/max width, plus the backdrop strip
- *  between the sidebar and the content panel that the Split sash fills.
- *  The minimum is the designed width — below it the tabs row wraps. */
+ *  between the sidebar and the content panel that the Split sash fills. */
 const SIDEBAR_DEFAULT = 240
 const SIDEBAR_MIN = 240
 const SIDEBAR_MAX = 480
@@ -63,11 +62,12 @@ function MenuIcon({ name }: MenuIconProps): ReactElement {
           <path d="M10 10l3 3" />
         </Icon>
       )
-    case 'automation':
+    case 'connector':
       return (
         <Icon viewBox="0 0 16 16" strokeWidth={1.25}>
-          <circle cx="8" cy="8" r="2.4" />
-          <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.5 1.5M10.9 10.9l1.5 1.5M12.4 3.6l-1.5 1.5M5.1 10.9l-1.5 1.5" />
+          {/* lucide:plug */}
+          <path d="M12 4.5v4a3 3 0 0 1-6 0v-4" />
+          <path d="M9 2v3M7 2v3M6 10v4" />
         </Icon>
       )
     case 'market':
@@ -146,25 +146,84 @@ function SidebarTopRow({
 }
 
 /** Project list entry (placeholder data until the dsh host lands). */
-interface ProjectEntry {
-  name: string
-  note?: string
-  age?: string
+/** Compact relative time for session rows (harness rows use the same
+ *  compact buckets: 刚刚 / {n}分钟 / {n}小时 / {n}天). */
+function relTime(minutesAgo: number): string {
+  if (minutesAgo < 1) return '刚刚'
+  if (minutesAgo < 60) return `${Math.round(minutesAgo)}分钟`
+  const hours = minutesAgo / 60
+  if (hours < 24) return `${Math.round(hours)}小时`
+  const days = hours / 24
+  return `${Math.round(days)}天`
 }
 
-const PROJECTS: readonly ProjectEntry[] = [
-  { name: 'dsh', note: '拉取并研究 deepseek-harness', age: '4天' },
-  { name: 'dsh-desktop', note: 'Electron 桌面壳', age: '今天' },
-  { name: 'docs', note: 'Electron 嵌入方案评估', age: '3天' },
-  { name: '未命名项目' },
+interface SessionStub {
+  /** Session id. */
+  id: string
+  /** Display title. */
+  title: string
+  /** Relative recency bucket (minutes) — drives the compact right-side time. */
+  updatedMinutesAgo: number
+  /** harness status flags (drive the left-side dot in P3). */
+  pendingInteraction?: 'approval' | 'plan-review' | 'question'
+  running?: boolean
+  runningSubagentCount?: number
+  completed?: boolean
+}
+
+interface WorkspaceStub {
+  /** Stable id handed through selection. */
+  id: string
+  /** Display title. */
+  title: string
+  /** Filesystem path (canonical; shown on hover in P4). */
+  path: string
+  sessions: SessionStub[]
+}
+
+const WORKSPACES: readonly WorkspaceStub[] = [
+  {
+    id: 'dsh',
+    title: 'dsh',
+    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh',
+    sessions: [
+      { id: 's1', title: '拉取并研究 deepseek-harness', updatedMinutesAgo: 5760, completed: true },
+      { id: 's2', title: '调研 Electron 嵌入方案', updatedMinutesAgo: 4320 },
+      { id: 's3', title: '跑通 web 端最小闭环', updatedMinutesAgo: 2880 },
+    ],
+  },
+  {
+    id: 'dsh-desktop',
+    title: 'dsh-desktop',
+    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh\\dsh-desktop',
+    sessions: [
+      { id: 's4', title: '侧栏工作区布局对齐', updatedMinutesAgo: 35, running: true },
+      { id: 's5', title: '底栏按钮体系统一', updatedMinutesAgo: 120, completed: true },
+      { id: 's6', title: 'Dropdown 十二向与快捷键', updatedMinutesAgo: 1440 },
+    ],
+  },
+  {
+    id: 'docs',
+    title: 'docs',
+    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh\\docs',
+    sessions: [
+      { id: 's7', title: 'Electron 嵌入方案评估', updatedMinutesAgo: 4320 },
+    ],
+  },
+  {
+    id: 'unnamed',
+    title: '未命名项目',
+    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\unnamed',
+    sessions: [],
+  },
 ]
 
-/** Dropdown fuel for the project selector — module-level so the references
+/** Dropdown fuel for the workspace selector — module-level so the references
  *  stay stable across renders (unstable literals used to re-trigger the
  *  dropdown's placement effect on every parent render). */
-const PROJECT_OPTIONS: readonly DropdownOption[] = PROJECTS.map((p) => ({
-  id: p.name,
-  label: p.name,
+const PROJECT_OPTIONS: readonly DropdownOption[] = WORKSPACES.map((w) => ({
+  id: w.id,
+  label: w.title,
 }))
 const PROJECT_ACTIONS: readonly DropdownAction[] = [
   { id: 'open-folder', label: '打开文件夹' },
@@ -439,102 +498,74 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
             ))}
           </div>
 
-          <div className="tabs">
-            <span className="tab">
-              <Icon className="tab-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                <path d="M6 3.5v9M3.5 6h5" opacity="0.9" />
-              </Icon>
-              分组
-            </span>
-            <span className="tab active">
-              <Icon className="tab-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                <path d="M2.5 4.2h4l1.3 1.5h5.7v6.1H2.5z" />
-              </Icon>
-              项目
-            </span>
-            <span className="tab-tools" aria-label="筛选与排序">
-              <Icon className="tool-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                <path d="M4 11L11 4M11 4H6M11 4v5" />
-              </Icon>
-              <Icon className="tool-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                <path d="M3.5 5h9M5.5 8h5M7 11h2" />
-              </Icon>
-              <Icon className="tool-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                <path d="M3.5 4.5h9M5 4.5L6 13h4l1-8.5M6.5 7v4M9.5 7v4" />
-              </Icon>
+          <div className="section-label">
+            <span>工作区</span>
+            <span className="section-actions">
+              {/* View options: grouping/ordering menu (dsh web's ⋯ slot). */}
+              <IconButton
+                className="section-action"
+                label="视图选项"
+                tip="视图选项"
+                icon={
+                  <Icon viewBox="0 0 16 16" strokeWidth={1.3}>
+                    <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
+                  </Icon>
+                }
+              />
+              {/* Add workspace: folder + plus, matching the web header. */}
+              <IconButton
+                className="section-action"
+                label="添加工作区"
+                tip="添加工作区"
+                icon={
+                  <Icon viewBox="0 0 16 16" strokeWidth={1.3}>
+                    <path d="M4.5 13.5h7l1-8.5h-3.3L7.6 3.5H3.5v6.5" />
+                    <path d="M10.5 11.5v4M8.5 13.5h4" />
+                  </Icon>
+                }
+              />
             </span>
           </div>
 
-          <div className="section-label">项目</div>
-
-          <div className="projects">
-            {PROJECTS.map((project) => (
-              <button
-                key={project.name}
-                className={`project ${selectedProject === project.name ? 'selected' : ''}`}
-                onClick={() => setSelectedProject(project.name)}
-              >
-                <span className="project-name">
-                  <svg className="folder" viewBox="0 0 16 16">
-                    <path d="M2.5 4h4l1.3 1.5h5.7v6H2.5z" />
-                  </svg>
-                  {project.name}
-                </span>
-                {project.note !== undefined && (
-                  <span className="project-meta">
-                    {project.note}
-                    {project.age !== undefined ? ` · ${project.age}` : ''}
+          <ScrollArea className="projects" label="工作区与会话" outside={6}>
+            {WORKSPACES.map((workspace) => (
+              <div key={workspace.id} className="workspace-group">
+                <button
+                  className={`project ${selectedProject === workspace.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedProject(workspace.id)}
+                >
+                  <span className="project-name">
+                    <svg className="folder" viewBox="0 0 16 16">
+                      <path d="M2.5 4h4l1.3 1.5h5.7v6H2.5z" />
+                    </svg>
+                    {workspace.title}
                   </span>
-                )}
-              </button>
+                </button>
+                <div className="workspace-sessions">
+                  {workspace.sessions.map((s) => (
+                    <button key={s.id} className="session-row">
+                      <span className="session-title">{s.title}</span>
+                      <span className="session-time">{relTime(s.updatedMinutesAgo)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
-          </div>
+          </ScrollArea>
 
           <div className="side-gap" />
 
           <div className="side-footer">
-            <div className="tasks-toggle">
-              <span>任务</span>
-              <span className="chev" aria-hidden="true">
-                ⌃
-              </span>
-            </div>
-            <div className="user-row">
-              <span className="avatar" aria-hidden="true">
-                A
-              </span>
-              <span className="user-name">awei</span>
-              <span className="pro-badge">Pro</span>
-              {/* Temporary theme toggle, pending a real settings surface. */}
-              <IconButton
-                className="theme-toggle"
-                label={theme === 'dark' ? '切换到浅色模式' : '切换到深色模式'}
-                onClick={onToggleTheme}
-                icon={
-                  theme === 'dark' ? (
-                    /* lucide:sun */
-                    <Icon>
-                      <circle cx="12" cy="12" r="4" />
-                      <path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-                    </Icon>
-                  ) : (
-                    /* lucide:moon */
-                    <Icon>
-                      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                    </Icon>
-                  )
-                }
-              />
-              <span className="user-icons" aria-hidden="true">
-                <Icon className="user-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                  <path d="M4.5 3h7v10l-3.5-2.2L4.5 13z" />
-                </Icon>
-                <Icon className="user-ico" viewBox="0 0 16 16" strokeWidth={1.3}>
-                  <circle cx="8" cy="8" r="2.4" />
-                  <path d="M8 2.4v1.8M8 11.8v1.8M2.4 8h1.8M11.8 8h1.8" />
-                </Icon>
-              </span>
-            </div>
+            {/* Harness parity: the only footer affordance is the Settings
+                trigger row (gear + label); there is no user row or task
+                toggle here. */}
+            <button className="settings-row" aria-label="设置">
+              <Icon className="settings-ico">
+                <path d="M12.2 2h-.44a2 2 0 0 0 2 2v.44a2 2 0 0 0 2 2h.44a2 2 0 0 1 2 2v.44a2 2 0 0 0 2 2v.44a2 2 0 0 1 2 2h.44a2 2 0 0 0 2 2v.44a2 2 0 0 0-2 2h-.44a2 2 0 0 1-2 2v-.44a2 2 0 0 0-2 2h-.44a2 2 0 0 1-2 2v-.44a2 2 0 0 0-2 2h-.44a2 2 0 0 1-2-2v-.44a2 2 0 0 0-2-2h-.44a2 2 0 0 1-2-2v-.44a2 2 0 0 0-2-2h-.44a2 2 0 0 1-2-2v-.44a2 2 0 0 0-2-2z" />
+                <circle cx="18" cy="18" r="3" />
+              </Icon>
+              <span>设置</span>
+            </button>
           </div>
         </nav>
 

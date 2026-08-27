@@ -1,0 +1,55 @@
+/* ScrollArea — overlay scrollbar that never costs layout space.
+   The native scrollbar is suppressed; a custom thumb paints over the right
+   padding edge. It stays transparent at rest, appears while scrolling or
+   while the pointer is inside, and its width holds steady (no mid-exit
+   shrink flash). */
+
+.ui-scroll-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  /* The thumb may step outside the pane (outside prop) — clipping would cut it
+     off, so the root stays overflow-visible and the viewport alone clips. */
+}
+
+.ui-scroll-viewport {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.ui-scroll-viewport::-webkit-scrollbar {
+  display: none; /* Chromium */
+}
+
+.ui-scroll-thumb {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--ui-scroll-size, 5px);
+  border-radius: 999px;
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.3);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Outside mode: the thumb steps PAST the container's right edge by the
+   caller-specified offset, landing on whatever outer seam sits there (e.g.
+   the split sash beside the sidebar pane). */
+.ui-scroll-thumb--outside {
+  right: calc(0px - var(--ui-scroll-outside, 0px));
+}
+
+/* Fixed thickness on hover too: only opacity changes, so exit never shows a
+   mid-fade shrink. */
+.ui-scroll-area:hover .ui-scroll-thumb,
+.ui-scroll-thumb--on {
+  opacity: 1;
+}
