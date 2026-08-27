@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown } from '@uibase'
+import type { DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 
 /** Main screen props. */
@@ -158,6 +159,64 @@ const PROJECTS: readonly ProjectEntry[] = [
   { name: '未命名项目' },
 ]
 
+/**
+ * Working modes, mirrored from the harness agent presets (ids + zh copy per
+ * ui-agent-preset locales). Static stand-in for now — swap the roster and the
+ * local state for `api.agentPresets.list` + Settings ns 'agent-presets'
+ * patching once the transport lands.
+ */
+const MODES: readonly DropdownOption[] = [
+  {
+    id: 'standard',
+    label: '标准模式',
+    description: '功能完整的编码 Agent：文件编辑、Shell、检索、Skills、计划、目标、子代理与工作流。',
+    // lucide:layers
+    icon: (
+      <Icon>
+        <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+        <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+        <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'code',
+    label: 'PTC 模式',
+    description: '具备标准模式的全部能力，并通过 Code Mode SDK 让模型用一个 TypeScript 程序组合多步操作。',
+    // lucide:code
+    icon: (
+      <Icon>
+        <path d="m16 18 6-6-6-6M8 6l-6 6 6 6" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'minimal',
+    label: '极简模式',
+    description: '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。',
+    // lucide:circle-minus
+    icon: (
+      <Icon>
+        <circle cx="12" cy="12" r="10" />
+        <path d="M8 12h8" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'cordis',
+    label: '创造模式',
+    description: '创建自定义 Agent preset：标准模式的全部能力，外加运行时检查、插件实验与创作指导。',
+    // lucide:wand-2
+    icon: (
+      <Icon>
+        <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" />
+        <path d="m14 7 3 3" />
+        <path d="M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9" />
+      </Icon>
+    ),
+  },
+]
+
 /** Time-of-day greeting (the reference opens with a "care" tone). */
 function greeting(): string {
   const hour = new Date().getHours()
@@ -179,6 +238,11 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [workMode, setWorkMode] = useState<string | null>('standard')
+  // Harness parity: the agent preset is pinned when the session starts, so
+  // the first send flips this and locks the mode selector for the rest of
+  // the conversation.
+  const [conversationStarted, setConversationStarted] = useState(false)
 
   return (
     <section
@@ -371,6 +435,15 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 }}
                 noneLabel="不在项目中工作"
               />
+              <Dropdown
+                headSlot="selected"
+                options={MODES}
+                value={workMode}
+                onChange={setWorkMode}
+                placeholder="选择模式"
+                searchable={false}
+                disabled={conversationStarted}
+              />
             </div>
             <div className="composer-body">
             <textarea
@@ -421,7 +494,17 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     <path d="m6 9l6 6l6-6" />
                   </Icon>
                 </button>
-                <button className="send-btn" aria-label="发送">
+                <button
+                  className="send-btn"
+                  aria-label="发送"
+                  onClick={() => {
+                    // A real send means a conversation has started; the
+                    // harness pins the agent preset at session creation, so
+                    // the mode selector locks from this moment (placeholder
+                    // for the transport-level session event).
+                    setConversationStarted(true)
+                  }}
+                >
                   {/* lucide:arrow-up */}
                   <Icon>
                     <path d="m5 12l7-7 7 7m-7 7V5" />

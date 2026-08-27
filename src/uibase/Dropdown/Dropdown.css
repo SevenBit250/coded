@@ -43,11 +43,33 @@
   color: var(--text-dim, #7d828d);
 }
 
+/* Caller-supplied option/trigger icons get sized HERE so call sites can pass
+   a bare <Icon> without remembering any class. */
+.ui-dd-optico {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim, #7d828d);
+}
+
+.ui-dd-optico > svg {
+  width: 100%;
+  height: 100%;
+}
+
 .ui-dd-label {
-  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Trigger-side label caps at a chip-friendly width; panel labels size off
+   their wrapping .ui-dd-text column instead. */
+.ui-dd-trigger .ui-dd-label {
+  max-width: 220px;
 }
 
 .ui-dd-chev {
@@ -225,6 +247,25 @@
 .ui-dd-item .ui-dd-label {
   flex: 1;
   min-width: 0;
+}
+
+/* Rich option rows (icon + name over a dim description + check). */
+.ui-dd-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ui-dd-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-faint, #aab0bb);
 }
 
 .ui-dd-check {

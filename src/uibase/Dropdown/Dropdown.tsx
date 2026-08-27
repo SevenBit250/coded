@@ -27,6 +27,11 @@ export interface DropdownOption {
   id: string
   /** Display label. */
   label: string
+  /** Leading glyph drawn left of the label in panel rows, and in the
+   *  trigger's head slot when this option is selected (`headSlot='selected'`). */
+  icon?: ReactElement
+  /** Second dim line under the label in panel rows. */
+  description?: string
 }
 
 /** One non-selecting command row under the option list. */
@@ -40,7 +45,7 @@ export interface DropdownAction {
 /** Dropdown props. */
 export interface DropdownProps {
   /** Selectable options (searchable). */
-  options?: DropdownOption[]
+  options?: readonly DropdownOption[]
   /** Selected option id, or null for none (the fallback row checks then). */
   value?: string | null
   /** Fires with the new id, or null when the clear button/fallback row is used. */
@@ -48,7 +53,7 @@ export interface DropdownProps {
   /** Trigger label while nothing is selected. */
   placeholder?: string
   /** Command rows below the option list (after a divider). */
-  actions?: DropdownAction[]
+  actions?: readonly DropdownAction[]
   /** Fires for an action row; the menu closes either way. */
   onAction?: (id: string) => void
   /** Label of the null-selection row shown (checked) while `value` is null. */
@@ -59,6 +64,12 @@ export interface DropdownProps {
   placement?: DropdownPlacement
   /** Disabled triggers neither open nor clear. */
   disabled?: boolean
+  /** What anchors the pill's 14px head slot (default 'project'):
+   *  - 'project' — built-in folder mark; with a value it crossfades to the
+   *    clear × on hover (workspace-selector behavior).
+   *  - 'selected' — renders the chosen option's own icon and no clear
+   *    affordance (mode-selector behavior: one mode is always active). */
+  headSlot?: 'project' | 'selected'
 }
 
 /** Anchor↔panel gap and the viewport margin kept on every side (px). */
@@ -136,6 +147,7 @@ export function Dropdown({
   searchable = true,
   placement = 'bottom-left',
   disabled = false,
+  headSlot = 'project',
 }: DropdownProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -311,30 +323,38 @@ export function Dropdown({
         {/* Head slot: the folder mark always anchors the pill; with a value
             picked, the clear × stacks over it and they crossfade on hover. */}
         <span className="ui-dd-slot">
-          {/* lucide:folder */}
-          <Icon className="ui-dd-fold">
-            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-          </Icon>
-          {selected !== undefined && (
-            <span
-              className="ui-dd-clear"
-              role="button"
-              aria-label="清除选中"
-              tabIndex={-1}
-              onMouseDown={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-              }}
-              onClick={(e) => {
-                e.stopPropagation()
-                onChange?.(null)
-              }}
-            >
-              {/* lucide:x */}
-              <Icon className="ui-dd-x">
-                <path d="M18 6L6 18M6 6l12 12" />
+          {headSlot === 'selected' ? (
+            selected?.icon !== undefined ? (
+              <span className="ui-dd-optico">{selected.icon}</span>
+            ) : null
+          ) : (
+            <>
+              {/* lucide:folder */}
+              <Icon className="ui-dd-fold">
+                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
               </Icon>
-            </span>
+              {selected !== undefined && (
+                <span
+                  className="ui-dd-clear"
+                  role="button"
+                  aria-label="清除选中"
+                  tabIndex={-1}
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onChange?.(null)
+                  }}
+                >
+                  {/* lucide:x */}
+                  <Icon className="ui-dd-x">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </Icon>
+                </span>
+              )}
+            </>
           )}
         </span>
         <span className="ui-dd-label">{selected === undefined ? placeholder : selected.label}</span>
@@ -396,11 +416,20 @@ export function Dropdown({
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => activateRow({ kind: 'option', id: o.id })}
                   >
-                    {/* lucide:folder */}
-                    <Icon className="ui-dd-ico">
-                      <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-                    </Icon>
-                    <span className="ui-dd-label">{o.label}</span>
+                    {o.icon !== undefined ? (
+                      <span className="ui-dd-optico">{o.icon}</span>
+                    ) : (
+                      /* lucide:folder (default keeps plain lists recognizable) */
+                      <Icon className="ui-dd-ico">
+                        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                      </Icon>
+                    )}
+                    <span className="ui-dd-text">
+                      <span className="ui-dd-label">{o.label}</span>
+                      {o.description !== undefined && (
+                        <span className="ui-dd-desc">{o.description}</span>
+                      )}
+                    </span>
                     {o.id === value && (
                       // lucide:check
                       <Icon className="ui-dd-check">
