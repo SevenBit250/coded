@@ -9,17 +9,32 @@ import {
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon/Icon'
-import type { TooltipPlacement } from '../Tooltip/Tooltip'
 import './Dropdown.css'
 
 /**
- * Where the panel sits relative to the trigger — the full eight-way set:
- * a side plus an edge alignment ('bottom-left' = below the trigger, left
- * edges lined up). When the preferred side would leave the viewport the
- * panel flips to the opposite side and is nudged back inside along the
- * cross axis (shared semantics with TooltipPlacement).
+ * Where the panel sits relative to the trigger — the full twelve-way grid:
+ * each side (top / bottom / left / right) offers the middle position plus
+ * both edge alignments along that side. Alignment is named for the side it
+ * hugs: 'bottom-left' = below the trigger, left edges lined up; 'left-top'
+ * = beside the trigger on its left, top edges lined up.
+ *
+ * When the preferred rect would leave the viewport the panel flips to the
+ * opposite side (alignment preserved) and is nudged back inside along the
+ * cross axis.
  */
-export type DropdownPlacement = TooltipPlacement
+export type DropdownPlacement =
+  | 'top'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom'
+  | 'bottom-left'
+  | 'bottom-right'
+  | 'left'
+  | 'left-top'
+  | 'left-bottom'
+  | 'right'
+  | 'right-top'
+  | 'right-bottom'
 
 /** One selectable workspace entry. */
 export interface DropdownOption {
@@ -103,32 +118,41 @@ interface Point {
   y: number
 }
 
-/** Which side of the anchor the panel ended up on — drives the direction of
- *  the entrance animation (a top-anchored menu must grow bottom-up). */
+/** Which side of the anchor the panel ended up on — drives which way the
+ *  entrance animation grows (a top-side panel must emerge bottom-up). */
 type PanelSide = 'top' | 'bottom' | 'left' | 'right'
 
 interface Placement extends Point {
   side: PanelSide
-}/** Fixed-position point for the panel, flipped and clamped to the viewport
- *  (same eight-way contract as the tooltip placer). Returns the resolved
- *  side so the entrance animation can follow it. */
+  /** CSS transform-origin matching the resolved side + alignment, so the
+   *  pop animation always grows from the anchor's direction. */
+  origin: string
+}
+
+/** Fixed-position point for the panel, flipped and clamped to the viewport
+ *  across the full twelve-way placement grid. Returns the resolved side and
+ *  a matching transform-origin for the directional entrance animation. */
 function place(
   anchor: DOMRect,
   panelW: number,
   panelH: number,
   placement: DropdownPlacement,
 ): Placement {
-  const [prefSide, align] = placement.split('-') as [PanelSide, 'left' | 'right' | undefined]
+  const [prefSide, align = undefined] = placement.split('-') as
+    [PanelSide, ('left' | 'right' | 'top' | 'bottom') | undefined]
   const vw = window.innerWidth
   const vh = window.innerHeight
 
   let side: PanelSide = prefSide
-  const centerX = anchor.left + anchor.width / 2 - panelW / 2
-  const centerY = anchor.top + anchor.height / 2 - panelH / 2
 
+  const clampX = (x: number): number =>
+    Math.min(Math.max(x, MARGIN), Math.max(MARGIN, vw - MARGIN - panelW))
+  const clampY = (y: number): number =>
+    Math.min(Math.max(y, MARGIN), Math.max(MARGIN, vh - MARGIN - panelH))
+
+  // --- horizontal sides (left / right of the anchor) ---
   if (side === 'left' || side === 'right') {
     let x = side === 'left' ? anchor.left - GAP - panelW : anchor.right + GAP
-    // Flip when overflowing, then clamp along the cross axis.
     if (x < MARGIN && side === 'left') {
       side = 'right'
       x = anchor.right + GAP
@@ -136,25 +160,49 @@ function place(
       side = 'left'
       x = anchor.left - GAP - panelW
     }
-    x = Math.min(Math.max(x, MARGIN), Math.max(MARGIN, vw - MARGIN - panelW))
-    const y = Math.min(Math.max(centerY, MARGIN), Math.max(MARGIN, vh - MARGIN - panelH))
-    return { x, y, side }
+    x = clampX(x)
+
+    let y =
+      align === 'top'
+        ? anchor.top
+        : align === 'bottom'
+          ? anchor.bottom - panelH
+          : anchor.top + anchor.height / 2 - panelH / 2
+    y = clampY(y)
+
+    return {
+      x,
+      y,
+      side,
+      origin: `${side === 'left' ? 'right' : 'left'} ${align ?? 'center'}`,
+    }
   }
 
+  // --- vertical sides (above / below the anchor) ---
   let y = side === 'top' ? anchor.top - GAP - panelH : anchor.bottom + GAP
   if (y < MARGIN && side === 'top') {
-    y = anchor.bottom + GAP
     side = 'bottom'
+    y = anchor.bottom + GAP
   } else if (y + panelH > vh - MARGIN && side === 'bottom') {
     side = 'top'
     y = Math.max(MARGIN, anchor.top - GAP - panelH)
   }
 
-  let x = align === 'left' ? anchor.left : align === 'right' ? anchor.right - panelW : centerX
-  x = Math.min(Math.max(x, MARGIN), Math.max(MARGIN, vw - MARGIN - panelW))
-  y = Math.min(Math.max(y, MARGIN), Math.max(MARGIN, vh - MARGIN - panelH))
+  const x = clampX(
+    align === 'left'
+      ? anchor.left
+      : align === 'right'
+        ? anchor.right - panelW
+        : anchor.left + anchor.width / 2 - panelW / 2,
+  )
+  const yClamped = clampY(y)
 
-  return { x, y, side }
+  return {
+    x,
+    y: yClamped,
+    side,
+    origin: `${align ?? 'center'} ${side === 'top' ? 'bottom' : 'top'}`,
+  }
 }
 
 /** One flat keyboard-navigable row inside the open panel. */
@@ -434,7 +482,11 @@ export function Dropdown({
             ]
               .filter(Boolean)
               .join(' ')}
-            style={pos !== null ? { left: pos.x, top: pos.y } : { visibility: 'hidden' }}
+            style={
+              pos !== null
+                ? { left: pos.x, top: pos.y, transformOrigin: pos.origin }
+                : { visibility: 'hidden' as const }
+            }
             onKeyDown={onKeyDown}
             onAnimationEnd={() => {
               if (closing) {

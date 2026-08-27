@@ -169,20 +169,26 @@
 }
 
 /* Directional entrance: the panel always grows FROM its anchor side.
-   Side classes are set from the resolved placement by the component. */
-.ui-dd-side-bottom,
-.ui-dd-side-right {
-  transform-origin: top left;
-  animation: ui-dd-pop-down 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+   Side classes come from the resolved placement; the matching
+   transform-origin is injected inline by the component (it depends on the
+   edge alignment too, not just the side). Motion = toward the anchor. */
+.ui-dd-side-bottom {
+  animation: ui-dd-slide-down 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.ui-dd-side-top,
+.ui-dd-side-top {
+  animation: ui-dd-slide-up 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .ui-dd-side-left {
-  transform-origin: bottom left;
-  animation: ui-dd-pop-up 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: ui-dd-slide-rightward 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes ui-dd-pop-down {
+.ui-dd-side-right {
+  animation: ui-dd-slide-leftward 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ui-dd-slide-down {
   from {
     opacity: 0;
     transform: scale(0.94) translateY(-6px);
@@ -193,7 +199,7 @@
   }
 }
 
-@keyframes ui-dd-pop-up {
+@keyframes ui-dd-slide-up {
   from {
     opacity: 0;
     transform: scale(0.94) translateY(6px);
@@ -201,6 +207,30 @@
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
+  }
+}
+
+/* Panel sits to the anchor's LEFT: it grows outward (rightward). */
+@keyframes ui-dd-slide-rightward {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateX(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+/* Panel sits to the anchor's RIGHT: mirror image, sliding leftward. */
+@keyframes ui-dd-slide-leftward {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
   }
 }
 
