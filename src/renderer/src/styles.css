@@ -749,11 +749,22 @@ html[data-platform='win32'] .anchor-bar {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  height: 26px;
+  padding: 0 8px;
   border: 0;
+  border-radius: 999px;
   background: transparent;
   font-size: 12.5px;
   color: var(--accent);
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+/* Hover affordance matches the head pills: transparent at rest (ZCode
+   parity), pill backdrop while hovered or while the menu is open. */
+.access-chip:hover,
+.access-chip[aria-expanded='true'] {
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.06);
 }
 
 .access-ico {

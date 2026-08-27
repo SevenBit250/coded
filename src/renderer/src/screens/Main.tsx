@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
 import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown } from '@uibase'
-import type { DropdownOption } from '@uibase'
+import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 
 /** Main screen props. */
@@ -159,6 +159,18 @@ const PROJECTS: readonly ProjectEntry[] = [
   { name: '未命名项目' },
 ]
 
+/** Dropdown fuel for the project selector — module-level so the references
+ *  stay stable across renders (unstable literals used to re-trigger the
+ *  dropdown's placement effect on every parent render). */
+const PROJECT_OPTIONS: readonly DropdownOption[] = PROJECTS.map((p) => ({
+  id: p.name,
+  label: p.name,
+}))
+const PROJECT_ACTIONS: readonly DropdownAction[] = [
+  { id: 'open-folder', label: '打开文件夹' },
+  { id: 'remote-connect', label: '远程连接' },
+]
+
 /**
  * Working modes, mirrored from the harness agent presets (ids + zh copy per
  * ui-agent-preset locales). Static stand-in for now — swap the roster and the
@@ -218,6 +230,89 @@ const MODES: readonly DropdownOption[] = [
 ]
 
 /** Time-of-day greeting (the reference opens with a "care" tone). */
+/**
+ * Access presets — the harness sandbox trio, verbatim from
+ * permission-presets' knobStateSchema (read-only | workspace-write |
+ * danger-full-access). Plan mode is NOT one of them: it belongs to the
+ * separate /plan domain and will get its own composer affordance later.
+ */
+const ACCESS_MODES: readonly DropdownOption[] = [
+  {
+    id: 'read-only',
+    label: '变更前确认',
+    description: '改文件前先问我。',
+    // lucide:hand
+    icon: (
+      <Icon>
+        <path d="M18 11V6a2 2 0 0 0-4 0v5" />
+        <path d="M14 10V4a2 2 0 0 0-4 0v2" />
+        <path d="M10 10.5V6a2 2 0 0 0-4 0v8" />
+        <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'workspace-write',
+    label: '自动编辑',
+    description: '自动编辑工作区内文件。',
+    // lucide:shield-check
+    icon: (
+      <Icon>
+        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+        <path d="m9 12 2 2 4-4" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'danger-full-access',
+    label: '完全访问',
+    description: '减少确认次数。',
+    // lucide:lock-open
+    icon: (
+      <Icon>
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+        <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+      </Icon>
+    ),
+  },
+]
+
+/** Context actions behind the composer's ＋ button (image ref). */
+const CONTEXT_ACTIONS: readonly DropdownAction[] = [
+  {
+    id: 'attach',
+    label: '添加附件',
+    // lucide:paperclip
+    icon: (
+      <Icon>
+        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'at-context',
+    label: '使用 @ 添加上下文',
+    // lucide:at-sign
+    icon: (
+      <Icon>
+        <circle cx="12" cy="12" r="4" />
+        <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'slash-commands',
+    label: '使用 / 选择命令或能力',
+    // lucide:square-check
+    icon: (
+      <Icon>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="m9 12 2 2 4-5" />
+      </Icon>
+    ),
+  },
+]
+
 function greeting(): string {
   const hour = new Date().getHours()
   if (hour >= 23 || hour < 6) return '夜深啦，别忘了照顾好自己哦'
@@ -243,6 +338,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   // the first send flips this and locks the mode selector for the rest of
   // the conversation.
   const [conversationStarted, setConversationStarted] = useState(false)
+  // Access preset: defaults to harness' default pairing (sandbox
+  // workspace-write + approval ask).
+  const [accessMode, setAccessMode] = useState<string | null>('workspace-write')
 
   return (
     <section
@@ -422,13 +520,10 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           <div className="composer">
             <div className="composer-head">
               <Dropdown
-                options={PROJECTS.map((p) => ({ id: p.name, label: p.name }))}
+                options={PROJECT_OPTIONS}
                 value={selectedProject}
                 onChange={setSelectedProject}
-                actions={[
-                  { id: 'open-folder', label: '打开文件夹' },
-                  { id: 'remote-connect', label: '远程连接' },
-                ]}
+                actions={PROJECT_ACTIONS}
                 onAction={(id) => {
                   // TODO(dsh wiring): open-folder -> pickWorkspace; remote -> connect flow.
                   void id
@@ -454,22 +549,70 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
             />
             <div className="composer-foot">
               <div className="composer-left">
-                <button className="plus-btn" aria-label="添加内容">
-                  {/* lucide:plus */}
-                  <Icon>
-                    <path d="M5 12h14m-7-7v14" />
-                  </Icon>
-                </button>
-                <button className="access-chip">
-                  {/* lucide:shield */}
-                  <Icon className="access-ico">
-                    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
-                  </Icon>
-                  完全访问
-                  <Icon className="chip-chev">
-                    <path d="m6 9l6 6l6-6" />
-                  </Icon>
-                </button>
+                {/* ＋ context menu: attach / @-mention / slash commands. */}
+                <Dropdown
+                  actions={CONTEXT_ACTIONS}
+                  onAction={(id) => {
+                    // TODO(dsh wiring): attach -> file picker; at-context ->
+                    // insert '@' into the composer; slash-commands -> palette.
+                    void id
+                  }}
+                  searchable={false}
+                  placement="top-left"
+                  fitContent
+                  renderTrigger={({ open, toggle }) => (
+                    <Tooltip label="添加上下文" placement="top-left">
+                      <button
+                        type="button"
+                        className="plus-btn"
+                        aria-label="添加上下文"
+                        aria-haspopup="menu"
+                        aria-expanded={open}
+                        onClick={toggle}
+                      >
+                        {/* lucide:plus */}
+                        <Icon>
+                          <path d="M5 12h14m-7-7v14" />
+                        </Icon>
+                      </button>
+                    </Tooltip>
+                  )}
+                />
+                {/* Access presets: harness sandbox trio. Switching maps to
+                    the `/permission {id}` command + a risk confirm for
+                    danger-full-access once the transport lands. The global
+                    Mod+Shift+M hotkey registers with the keymap later. */}
+                <Dropdown
+                  headSlot="selected"
+                  options={ACCESS_MODES}
+                  value={accessMode}
+                  onChange={setAccessMode}
+                  searchable={false}
+                  placement="top-left"
+                  className="dd-access"
+                  fitContent
+                  renderTrigger={({ open, toggle, selected }) => (
+                    <Tooltip label="切换访问权限" shortcut="Mod+Shift+M" placement="top-left">
+                      <button
+                        type="button"
+                        className="access-chip"
+                        aria-haspopup="listbox"
+                        aria-expanded={open}
+                        onClick={toggle}
+                      >
+                        {selected?.icon !== undefined ? (
+                          <span className="ui-dd-optico">{selected.icon}</span>
+                        ) : null}
+                        <span className="ui-dd-label">
+                          {selected?.label ?? '访问模式'}
+                        </span>
+                        <Icon className="chip-chev">
+                          <path d="m6 9l6 6l6-6" />
+                        </Icon>
+                      </button>
+                    </Tooltip>
+                  )}
+                />
               </div>
               <div className="composer-right">
                 <Tooltip label="选择模型" shortcut="Ctrl+M" placement="top-left">

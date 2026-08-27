@@ -40,6 +40,8 @@ export interface DropdownAction {
   id: string
   /** Display label. */
   label: string
+  /** Leading glyph, sized by the same wrapper as option icons. */
+  icon?: ReactElement
 }
 
 /** Dropdown props. */
@@ -70,6 +72,23 @@ export interface DropdownProps {
    *  - 'selected' — renders the chosen option's own icon and no clear
    *    affordance (mode-selector behavior: one mode is always active). */
   headSlot?: 'project' | 'selected'
+  /** Full replacement for the built-in pill trigger, for triggers that are
+   *  not pills at all (a bare icon button etc.). Receives the open flag, the
+   *  toggle to wire up, and the currently selected option so custom triggers
+   *  can mirror its glyph/label; everything else — placement, dismissal,
+   *  keyboard, panel — keeps working unchanged. */
+  renderTrigger?: (state: {
+    open: boolean
+    toggle: () => void
+    selected: DropdownOption | undefined
+  }) => ReactElement
+  /** Extra class on the root wrapper so app-side CSS can retheme a
+   *  particular instance (e.g. accent-colored access chip). */
+  className?: string
+  /** Hug the longest row instead of honoring the fixed min-width — for
+   *  short-label menus (context actions) where the default width reads
+   *  oversized. */
+  fitContent?: boolean
 }
 
 /** Anchor↔panel gap and the viewport margin kept on every side (px). */
@@ -84,42 +103,58 @@ interface Point {
   y: number
 }
 
-/** Fixed-position point for the panel, flipped and clamped to the viewport
- *  (same eight-way contract as the tooltip placer). */
+/** Which side of the anchor the panel ended up on — drives the direction of
+ *  the entrance animation (a top-anchored menu must grow bottom-up). */
+type PanelSide = 'top' | 'bottom' | 'left' | 'right'
+
+interface Placement extends Point {
+  side: PanelSide
+}/** Fixed-position point for the panel, flipped and clamped to the viewport
+ *  (same eight-way contract as the tooltip placer). Returns the resolved
+ *  side so the entrance animation can follow it. */
 function place(
   anchor: DOMRect,
   panelW: number,
   panelH: number,
   placement: DropdownPlacement,
-): Point {
-  const [side, align] = placement.split('-')
+): Placement {
+  const [prefSide, align] = placement.split('-') as [PanelSide, 'left' | 'right' | undefined]
   const vw = window.innerWidth
   const vh = window.innerHeight
 
-  let x =
-    align === 'left'
-      ? anchor.left
-      : align === 'right'
-        ? anchor.right - panelW
-        : anchor.left + anchor.width / 2 - panelW / 2
-  let y = anchor.top + anchor.height / 2 - panelH / 2
+  let side: PanelSide = prefSide
+  const centerX = anchor.left + anchor.width / 2 - panelW / 2
+  const centerY = anchor.top + anchor.height / 2 - panelH / 2
 
-  if (side === 'top') y = anchor.top - GAP - panelH
-  else if (side === 'bottom') y = anchor.bottom + GAP
-  else if (side === 'left') x = anchor.left - GAP - panelW
-  else x = anchor.right + GAP
+  if (side === 'left' || side === 'right') {
+    let x = side === 'left' ? anchor.left - GAP - panelW : anchor.right + GAP
+    // Flip when overflowing, then clamp along the cross axis.
+    if (x < MARGIN && side === 'left') {
+      side = 'right'
+      x = anchor.right + GAP
+    } else if (x + panelW > vw - MARGIN && side === 'right') {
+      side = 'left'
+      x = anchor.left - GAP - panelW
+    }
+    x = Math.min(Math.max(x, MARGIN), Math.max(MARGIN, vw - MARGIN - panelW))
+    const y = Math.min(Math.max(centerY, MARGIN), Math.max(MARGIN, vh - MARGIN - panelH))
+    return { x, y, side }
+  }
 
-  // Flip to the opposite side when the preferred one overflows.
-  if (side === 'top' && y < MARGIN) y = anchor.bottom + GAP
-  else if (side === 'bottom' && y + panelH > vh - MARGIN) y = anchor.top - GAP - panelH
-  if (side === 'left' && x < MARGIN) x = anchor.right + GAP
-  else if (side === 'right' && x + panelW > vw - MARGIN) x = anchor.left - GAP - panelW
+  let y = side === 'top' ? anchor.top - GAP - panelH : anchor.bottom + GAP
+  if (y < MARGIN && side === 'top') {
+    y = anchor.bottom + GAP
+    side = 'bottom'
+  } else if (y + panelH > vh - MARGIN && side === 'bottom') {
+    side = 'top'
+    y = Math.max(MARGIN, anchor.top - GAP - panelH)
+  }
 
-  // Never leave the viewport along either axis.
+  let x = align === 'left' ? anchor.left : align === 'right' ? anchor.right - panelW : centerX
   x = Math.min(Math.max(x, MARGIN), Math.max(MARGIN, vw - MARGIN - panelW))
   y = Math.min(Math.max(y, MARGIN), Math.max(MARGIN, vh - MARGIN - panelH))
 
-  return { x, y }
+  return { x, y, side }
 }
 
 /** One flat keyboard-navigable row inside the open panel. */
@@ -148,12 +183,15 @@ export function Dropdown({
   placement = 'bottom-left',
   disabled = false,
   headSlot = 'project',
+  renderTrigger,
+  className,
+  fitContent = false,
 }: DropdownProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
   const [query, setQuery] = useState('')
   const [highlight, setHighlight] = useState(-1)
-  const [pos, setPos] = useState<Point | null>(null)
+  const [pos, setPos] = useState<Placement | null>(null)
 
   const anchorRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -253,14 +291,24 @@ export function Dropdown({
 
   // Two-pass placement, mirroring the tooltip: the panel mounts hidden, is
   // measured, then lands at its point — all inside one layout effect so no
-  // hidden frame paints. While closing, the last position holds for the
-  // exit animation.
+  // hidden frame paints. While closing, the last position is kept so the
+  // exit animation plays in place. CRITICAL: callers commonly pass inline
+  // option/action literals, so this effect must not depend on their identity
+  // alone — the state write bails when the computed point is unchanged,
+  // otherwise an unstable-prop parent render loops into "maximum update
+  // depth exceeded" and unmounts the whole tree.
   useLayoutEffect(() => {
     if (!open) return
     const anchor = anchorRef.current
     const panel = panelRef.current
     if (anchor === null || panel === null) return
-    setPos(place(anchor.getBoundingClientRect(), panel.offsetWidth, panel.offsetHeight, placement))
+    const rect = anchor.getBoundingClientRect()
+    const next = place(rect, panel.offsetWidth, panel.offsetHeight, placement)
+    setPos((prev) =>
+      prev !== null && prev.x === next.x && prev.y === next.y && prev.side === next.side
+        ? prev
+        : next,
+    )
   }, [open, placement, options, query])
 
   // Open focuses the search field so typing filters immediately; query
@@ -308,10 +356,18 @@ export function Dropdown({
 
   const selected = options.find((o) => o.id === value)
   const rowId = (index: number): string => `ui-dd-row-${index}`
+  // Resolved anchor side drives which way the entrance animation grows.
+  const side: PanelSide = pos?.side ?? 'bottom'
 
   return (
-    <div className="ui-dd" ref={anchorRef}>
-      <button
+    <div
+      className={`ui-dd${className !== undefined ? ` ${className}` : ''}`}
+      ref={anchorRef}
+    >
+      {renderTrigger !== undefined ? (
+        renderTrigger({ open, toggle: open ? requestClose : openPanel, selected })
+      ) : (
+        <button
         ref={triggerRef}
         type="button"
         className={`ui-dd-trigger${selected !== undefined ? ' ui-dd-trigger--filled' : ''}`}
@@ -362,14 +418,22 @@ export function Dropdown({
         <Icon className="ui-dd-chev">
           <path d="m6 9l6 6 6-6" />
         </Icon>
-      </button>
+        </button>
+      )}
 
       {(open || closing) &&
         createPortal(
           <div
             ref={panelRef}
             role="listbox"
-            className={`ui-dd-panel${closing ? ' ui-dd-panel--closing' : ''}`}
+            className={[
+              'ui-dd-panel',
+              `ui-dd-side-${side}`,
+              closing ? 'ui-dd-panel--closing' : '',
+              fitContent ? 'ui-dd-panel--fit' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             style={pos !== null ? { left: pos.x, top: pos.y } : { visibility: 'hidden' }}
             onKeyDown={onKeyDown}
             onAnimationEnd={() => {
@@ -402,47 +466,51 @@ export function Dropdown({
               </div>
             )}
 
-            <div className="ui-dd-list">
-              {filteredOptions.map((o) => {
-                const index = rows.findIndex((r) => r.kind === 'option' && r.id === o.id)
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    role="option"
-                    aria-selected={o.id === value}
-                    id={rowId(index)}
-                    className={`ui-dd-item${index === highlight ? ' ui-dd-item--hot' : ''}`}
-                    onMouseEnter={() => setHighlight(index)}
-                    onClick={() => activateRow({ kind: 'option', id: o.id })}
-                  >
-                    {o.icon !== undefined ? (
-                      <span className="ui-dd-optico">{o.icon}</span>
-                    ) : (
-                      /* lucide:folder (default keeps plain lists recognizable) */
-                      <Icon className="ui-dd-ico">
-                        <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-                      </Icon>
-                    )}
-                    <span className="ui-dd-text">
-                      <span className="ui-dd-label">{o.label}</span>
-                      {o.description !== undefined && (
-                        <span className="ui-dd-desc">{o.description}</span>
+            {/* Option list exists only when there are options: action-only
+                menus (no options) skip it entirely, empty state included. */}
+            {options.length > 0 && (
+              <div className="ui-dd-list">
+                {filteredOptions.map((o) => {
+                  const index = rows.findIndex((r) => r.kind === 'option' && r.id === o.id)
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="option"
+                      aria-selected={o.id === value}
+                      id={rowId(index)}
+                      className={`ui-dd-item${index === highlight ? ' ui-dd-item--hot' : ''}`}
+                      onMouseEnter={() => setHighlight(index)}
+                      onClick={() => activateRow({ kind: 'option', id: o.id })}
+                    >
+                      {o.icon !== undefined ? (
+                        <span className="ui-dd-optico">{o.icon}</span>
+                      ) : (
+                        /* lucide:folder (default keeps plain lists recognizable) */
+                        <Icon className="ui-dd-ico">
+                          <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                        </Icon>
                       )}
-                    </span>
-                    {o.id === value && (
-                      // lucide:check
-                      <Icon className="ui-dd-check">
-                        <path d="M20 6L9 17l-5-5" />
-                      </Icon>
-                    )}
-                  </button>
-                )
-              })}
-              {filteredOptions.length === 0 && (
-                <div className="ui-dd-empty">无匹配工作区</div>
-              )}
-            </div>
+                      <span className="ui-dd-text">
+                        <span className="ui-dd-label">{o.label}</span>
+                        {o.description !== undefined && (
+                          <span className="ui-dd-desc">{o.description}</span>
+                        )}
+                      </span>
+                      {o.id === value && (
+                        // lucide:check
+                        <Icon className="ui-dd-check">
+                          <path d="M20 6L9 17l-5-5" />
+                        </Icon>
+                      )}
+                    </button>
+                  )
+                })}
+                {filteredOptions.length === 0 && (
+                  <div className="ui-dd-empty">无匹配工作区</div>
+                )}
+              </div>
+            )}
 
             {actions.length > 0 && (
               <>
@@ -463,6 +531,9 @@ export function Dropdown({
                         triggerRef.current?.focus()
                       }}
                     >
+                      {a.icon !== undefined && (
+                        <span className="ui-dd-optico">{a.icon}</span>
+                      )}
                       <span className="ui-dd-label">{a.label}</span>
                     </button>
                   )

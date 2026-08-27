@@ -158,15 +158,31 @@
   border: 1px solid var(--border, #e6e8ee);
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(var(--shadow-rgb, 20, 22, 30), 0.14);
+}
+
+/* Width hugs the longest row — for short-label menus where the default
+   min-width reads oversized (context actions, access presets). */
+.ui-dd-panel--fit {
+  min-width: 0;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 2 * var(--margin, 8px)));
+}
+
+/* Directional entrance: the panel always grows FROM its anchor side.
+   Side classes are set from the resolved placement by the component. */
+.ui-dd-side-bottom,
+.ui-dd-side-right {
   transform-origin: top left;
-  animation: ui-dd-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: ui-dd-pop-down 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.ui-dd-panel--closing {
-  animation: ui-dd-pop-out 0.11s ease both;
+.ui-dd-side-top,
+.ui-dd-side-left {
+  transform-origin: bottom left;
+  animation: ui-dd-pop-up 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes ui-dd-pop {
+@keyframes ui-dd-pop-down {
   from {
     opacity: 0;
     transform: scale(0.94) translateY(-6px);
@@ -177,14 +193,30 @@
   }
 }
 
-@keyframes ui-dd-pop-out {
+@keyframes ui-dd-pop-up {
   from {
+    opacity: 0;
+    transform: scale(0.94) translateY(6px);
+  }
+  to {
     opacity: 1;
     transform: scale(1) translateY(0);
   }
+}
+
+.ui-dd-panel--closing {
+  /* Neutral fade-shrink on the way out; direction would fight whichever
+     side class is still applied while dissolving. */
+  animation: ui-dd-fade-out 0.11s ease both;
+}
+
+@keyframes ui-dd-fade-out {
+  from {
+    opacity: 1;
+  }
   to {
     opacity: 0;
-    transform: scale(0.96) translateY(-4px);
+    transform: scale(0.96);
   }
 }
 
