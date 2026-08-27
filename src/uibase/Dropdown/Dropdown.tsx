@@ -9,7 +9,7 @@ import {
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon/Icon'
-import { registerShortcut, shortcutLabel } from '../MetaButton'
+import { useShortcut, shortcutLabel } from '../Meta'
 import './Dropdown.css'
 
 /**
@@ -258,10 +258,6 @@ export function Dropdown({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const closeTimer = useRef<number | null>(null)
-  /** Latest cycle-stepper for the global shortcut (kept in a ref so the
-   *  registry binding never tears down on re-render; assignment happens
-   *  below after options/value are in scope). */
-  const cycleRef = useRef<((dir: 1 | -1) => void) | null>(null)
 
   const closeTimerClear = (): void => {
     if (closeTimer.current !== null) {
@@ -418,23 +414,22 @@ export function Dropdown({
     [],
   )
 
-  // App-global cycle shortcut: steps the selection WITHOUT touching the
-  // panel — the user stays at the current focus, the value moves.
-  useEffect(() => {
-    if (cycleShortcut === undefined || disabled) return
-    return registerShortcut(cycleShortcut, () => cycleRef.current?.(1))
-  }, [cycleShortcut, disabled])
-
-  cycleRef.current = (dir) => {
-    if (options.length === 0 || disabled) return
-    const current = options.findIndex((o) => o.id === value)
-    // Nothing selected (or a stale value): anchor at the start so forward
-    // lands on the first option, backward on the last.
-    const base = current === -1 ? (dir > 0 ? -1 : 0) : current
-    const next = options[(base + dir + options.length) % options.length]
-    if (next === undefined) return
-    onChange?.(next.id)
-  }
+  // App-global cycle shortcut via Meta: steps the selection WITHOUT touching
+  // the panel — the user stays at the current focus, the value moves.
+  useShortcut(
+    cycleShortcut,
+    () => {
+      if (options.length === 0) return
+      const current = options.findIndex((o) => o.id === value)
+      // Nothing selected (or a stale value): anchor at the start so forward
+      // lands on the first option, backward on the last.
+      const base = current === -1 ? -1 : current
+      const next = options[(base + 1 + options.length) % options.length]
+      if (next === undefined) return
+      onChange?.(next.id)
+    },
+    { enabled: !disabled },
+  )
 
   const selected = options.find((o) => o.id === value)
   const rowId = (index: number): string => `ui-dd-row-${index}`

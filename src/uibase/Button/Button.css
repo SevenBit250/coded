@@ -1,0 +1,83 @@
+/* Button — text-bearing variant on top of MetaButton chrome. Variants own
+   color/fill; sizes own height and padding; block stretches full width.
+   Theme variables carry fallbacks per uibase rules. */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* ---------- sizes ---------- */
+.ui-btn--sm {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ui-btn--md {
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.ui-btn--lg {
+  height: 36px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+/* ---------- variants ---------- */
+.ui-btn--primary {
+  background: var(--accent, #e8734a);
+  color: var(--on-dark, #ffffff);
+  border: 1px solid transparent;
+}
+
+.ui-btn--primary:hover {
+  filter: brightness(1.06);
+}
+
+.ui-btn--secondary {
+  background: transparent;
+  color: var(--text, #26272d);
+  border: 1px solid var(--border, #e6e8ee);
+}
+
+.ui-btn--secondary:hover {
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.05);
+}
+
+.ui-btn--ghost {
+  background: transparent;
+  color: var(--text, #26272d);
+  border: 1px solid transparent;
+}
+
+.ui-btn--ghost:hover {
+  background: rgba(var(--ink-rgb, 20, 22, 26), 0.05);
+}
+
+/* ---------- block ---------- */
+.ui-btn--block {
+  display: flex;
+  width: 100%;
+}
+
+/* ---------- disabled ---------- */
+.ui-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.ui-btn:disabled:hover {
+  background: inherit;
+  filter: none;
+}

@@ -7,11 +7,30 @@
  *    props, never reached for directly.
  *  - Styles ship as colocated CSS imported by the component; theme
  *    variables (var(--text) etc.) always have fallbacks.
+ *
+ * Capability layering (keep it clean):
+ *  - Meta = zero-DOM behavior base (app-global shortcuts). Compose its hooks
+ *    (`useShortcut`) wherever behavior without a shell is needed; never wrap
+ *    it around visual output.
+ *  - MetaButton = Meta + native button + Tooltip composition — the shared
+ *    base for all button forms. Button (text) and IconButton (icon) are
+ *    visual specializations of MetaButton, inheriting the same trio.
+ *  - Tooltip stays a standalone sibling: it renders a bubble around whatever
+ *    it's given and can show a shortcut *text*, but it never owns the
+ *    shortcut behavior. Do not bundle Tooltip into other components; compose
+ *    it at the trigger site.
+ *  - Dropdown inherits from Meta for its cycle shortcut only. Its trigger
+ *    may be a pill (built-in) or a fully custom element (renderTrigger) —
+ *    tooltip for a custom trigger is composed by the caller at the trigger
+ *    site, exactly like everywhere else.
  */
+export { registerShortcut, shortcutLabel, useShortcut } from './Meta'
 export { Icon } from './Icon'
 export type { IconProps } from './Icon'
 export { MetaButton } from './MetaButton'
 export type { MetaButtonProps } from './MetaButton'
+export { Button } from './Button'
+export type { ButtonProps } from './Button'
 export { IconButton } from './IconButton'
 export type { IconButtonProps } from './IconButton'
 export { Menu, MenuItem, MenuDivider } from './Menu'

@@ -1,8 +1,7 @@
-import { useEffect, useRef } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { Tooltip } from '../Tooltip'
 import type { TooltipPlacement } from '../Tooltip'
-import { registerShortcut, shortcutLabel } from './shortcuts'
+import { useShortcut, shortcutLabel } from '../Meta'
 import './MetaButton.css'
 
 /** MetaButton props. */
@@ -30,8 +29,16 @@ export interface MetaButtonProps {
 
 /**
  * Base uibase button: chrome shell, built-in Tooltip, and global shortcut
- * binding. Variants (IconButton, later text/chip buttons) compose it and
- * add their own classes and content.
+ * binding. Variants (IconButton, Button, later text/chip buttons) compose it
+ * and add their own classes and content.
+ *
+ * Internally this is a pure composition of three abilities:
+ *  - shortcut binding comes from Meta's useShortcut (zero-DOM behavior base);
+ *  - tooltip is a standalone sibling rendered around the native button;
+ *  - the button itself is the only element MetaButton contributes.
+ *
+ * Keep this file a thin composer — behavior lives in Meta, presentation in
+ * this file's CSS, tooltip stays a peer.
  */
 export function MetaButton({
   label,
@@ -43,13 +50,7 @@ export function MetaButton({
   shortcut,
 }: MetaButtonProps): ReactElement {
   // Latest handler in a ref so re-renders never tear the binding down.
-  const onClickRef = useRef(onClick)
-  onClickRef.current = onClick
-
-  useEffect(() => {
-    if (shortcut === undefined) return
-    return registerShortcut(shortcut, () => onClickRef.current?.())
-  }, [shortcut])
+  useShortcut(shortcut, () => onClick?.())
 
   return (
     <Tooltip
