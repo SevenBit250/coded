@@ -9,6 +9,7 @@ import {
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon/Icon'
+import { registerShortcut, shortcutLabel } from '../MetaButton'
 import './Dropdown.css'
 
 /**
@@ -89,13 +90,16 @@ export interface DropdownProps {
   headSlot?: 'project' | 'selected'
   /** Full replacement for the built-in pill trigger, for triggers that are
    *  not pills at all (a bare icon button etc.). Receives the open flag, the
-   *  toggle to wire up, and the currently selected option so custom triggers
-   *  can mirror its glyph/label; everything else — placement, dismissal,
+   *  toggle to wire up, the currently selected option, and the platform
+   *  shortcut display label (e.g. 'Mod+Shift+M' reads as Ctrl+Shift+M on
+   *  Windows) for tooltips; everything else — placement, dismissal,
    *  keyboard, panel — keeps working unchanged. */
   renderTrigger?: (state: {
     open: boolean
     toggle: () => void
     selected: DropdownOption | undefined
+    /** Pre-expanded shortcut hint for the trigger's tooltip. */
+    shortcut?: string
   }) => ReactElement
   /** Extra class on the root wrapper so app-side CSS can retheme a
    *  particular instance (e.g. accent-colored access chip). */
@@ -104,6 +108,13 @@ export interface DropdownProps {
    *  short-label menus (context actions) where the default width reads
    *  oversized. */
   fitContent?: boolean
+  /**
+   * App-global shortcut that CYCLES the selection (forward through
+   * `options`, wrapping at the end; backward with Shift) without touching
+   * the panel. E.g. "Mod+Shift+M": Ctrl on Windows/Linux, Cmd on macOS.
+   * Registration is exclusive — the same shortcut bound elsewhere throws.
+   */
+  cycleShortcut?: string
 }
 
 /** Anchor↔panel gap and the viewport margin kept on every side (px). */
@@ -234,6 +245,7 @@ export function Dropdown({
   renderTrigger,
   className,
   fitContent = false,
+  cycleShortcut,
 }: DropdownProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -246,6 +258,10 @@ export function Dropdown({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const closeTimer = useRef<number | null>(null)
+  /** Latest cycle-stepper for the global shortcut (kept in a ref so the
+   *  registry binding never tears down on re-render; assignment happens
+   *  below after options/value are in scope). */
+  const cycleRef = useRef<((dir: 1 | -1) => void) | null>(null)
 
   const closeTimerClear = (): void => {
     if (closeTimer.current !== null) {
@@ -402,6 +418,24 @@ export function Dropdown({
     [],
   )
 
+  // App-global cycle shortcut: steps the selection WITHOUT touching the
+  // panel — the user stays at the current focus, the value moves.
+  useEffect(() => {
+    if (cycleShortcut === undefined || disabled) return
+    return registerShortcut(cycleShortcut, () => cycleRef.current?.(1))
+  }, [cycleShortcut, disabled])
+
+  cycleRef.current = (dir) => {
+    if (options.length === 0 || disabled) return
+    const current = options.findIndex((o) => o.id === value)
+    // Nothing selected (or a stale value): anchor at the start so forward
+    // lands on the first option, backward on the last.
+    const base = current === -1 ? (dir > 0 ? -1 : 0) : current
+    const next = options[(base + dir + options.length) % options.length]
+    if (next === undefined) return
+    onChange?.(next.id)
+  }
+
   const selected = options.find((o) => o.id === value)
   const rowId = (index: number): string => `ui-dd-row-${index}`
   // Resolved anchor side drives which way the entrance animation grows.
@@ -413,7 +447,12 @@ export function Dropdown({
       ref={anchorRef}
     >
       {renderTrigger !== undefined ? (
-        renderTrigger({ open, toggle: open ? requestClose : openPanel, selected })
+        renderTrigger({
+          open,
+          toggle: open ? requestClose : openPanel,
+          selected,
+          shortcut: cycleShortcut !== undefined ? shortcutLabel(cycleShortcut) : undefined,
+        })
       ) : (
         <button
         ref={triggerRef}

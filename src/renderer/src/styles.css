@@ -767,6 +767,33 @@ html[data-platform='win32'] .anchor-bar {
   background: rgba(var(--ink-rgb, 20, 22, 26), 0.06);
 }
 
+/* Roll-up face swap: each remount (the key follows the selected value)
+   plays the pair entering from below, reading as the value cycling. */
+.access-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  animation: access-face-roll 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes access-face-roll {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .access-face {
+    animation: none;
+  }
+}
+
 .access-ico {
   width: 14px;
   height: 14px;

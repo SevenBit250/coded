@@ -313,6 +313,23 @@ const CONTEXT_ACTIONS: readonly DropdownAction[] = [
   },
 ]
 
+/**
+ * Access trigger face: swaps icon+label on every selection change with a
+ * roll-up slide — the old pair exits upward while the new one enters from
+ * below, which reads as the value cycling (Mod+Shift+M) rather than the
+ * chip blinking. Rebuilt each switch via the value-keyed mount.
+ */
+function AccessChipFace({ selected }: { selected: DropdownOption | undefined }): ReactElement {
+  return (
+    <span className="access-face" key={selected?.id ?? 'none'}>
+      {selected?.icon !== undefined && (
+        <span className="ui-dd-optico">{selected.icon}</span>
+      )}
+      <span className="ui-dd-label">{selected?.label ?? '访问模式'}</span>
+    </span>
+  )
+}
+
 function greeting(): string {
   const hour = new Date().getHours()
   if (hour >= 23 || hour < 6) return '夜深啦，别忘了照顾好自己哦'
@@ -580,8 +597,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 />
                 {/* Access presets: harness sandbox trio. Switching maps to
                     the `/permission {id}` command + a risk confirm for
-                    danger-full-access once the transport lands. The global
-                    Mod+Shift+M hotkey registers with the keymap later. */}
+                    danger-full-access once the transport lands. */}
                 <Dropdown
                   headSlot="selected"
                   options={ACCESS_MODES}
@@ -591,8 +607,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                   placement="top-left"
                   className="dd-access"
                   fitContent
-                  renderTrigger={({ open, toggle, selected }) => (
-                    <Tooltip label="切换访问权限" shortcut="Mod+Shift+M" placement="top-left">
+                  cycleShortcut="Mod+Shift+M"
+                  renderTrigger={({ open, toggle, selected, shortcut }) => (
+                    <Tooltip label="切换访问权限" shortcut={shortcut} placement="top-left">
                       <button
                         type="button"
                         className="access-chip"
@@ -600,12 +617,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                         aria-expanded={open}
                         onClick={toggle}
                       >
-                        {selected?.icon !== undefined ? (
-                          <span className="ui-dd-optico">{selected.icon}</span>
-                        ) : null}
-                        <span className="ui-dd-label">
-                          {selected?.label ?? '访问模式'}
-                        </span>
+                        <AccessChipFace selected={selected} />
                         <Icon className="chip-chev">
                           <path d="m6 9l6 6l6-6" />
                         </Icon>
