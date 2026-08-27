@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown } from '@uibase'
+import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown, MetaButton } from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 
@@ -172,6 +172,56 @@ const PROJECT_ACTIONS: readonly DropdownAction[] = [
 ]
 
 /**
+ * Model / reasoning-effort rosters: static stand-ins for now. The harness
+ * side loads models via ModelDirectory (api call on open) and reads effort
+ * from the session projection — wire these up once the transport lands.
+ */
+const MODELS: readonly DropdownOption[] = [
+  { id: 'deepseek-chat', label: 'deepseek-chat' },
+  { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
+]
+
+const EFFORTS: readonly DropdownOption[] = [
+  {
+    id: 'low',
+    label: '低',
+    // lucide:gauge
+    icon: (
+      <Icon>
+        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'medium',
+    label: '中',
+    icon: (
+      <Icon>
+        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'high',
+    label: '高',
+    icon: (
+      <Icon>
+        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
+      </Icon>
+    ),
+  },
+  {
+    id: 'max',
+    label: '最高',
+    icon: (
+      <Icon>
+        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
+      </Icon>
+    ),
+  },
+]
+
+/**
  * Working modes, mirrored from the harness agent presets (ids + zh copy per
  * ui-agent-preset locales). Static stand-in for now — swap the roster and the
  * local state for `api.agentPresets.list` + Settings ns 'agent-presets'
@@ -313,23 +363,6 @@ const CONTEXT_ACTIONS: readonly DropdownAction[] = [
   },
 ]
 
-/**
- * Access trigger face: swaps icon+label on every selection change with a
- * roll-up slide — the old pair exits upward while the new one enters from
- * below, which reads as the value cycling (Mod+Shift+M) rather than the
- * chip blinking. Rebuilt each switch via the value-keyed mount.
- */
-function AccessChipFace({ selected }: { selected: DropdownOption | undefined }): ReactElement {
-  return (
-    <span className="access-face" key={selected?.id ?? 'none'}>
-      {selected?.icon !== undefined && (
-        <span className="ui-dd-optico">{selected.icon}</span>
-      )}
-      <span className="ui-dd-label">{selected?.label ?? '访问模式'}</span>
-    </span>
-  )
-}
-
 function greeting(): string {
   const hour = new Date().getHours()
   if (hour >= 23 || hour < 6) return '夜深啦，别忘了照顾好自己哦'
@@ -358,6 +391,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   // Access preset: defaults to harness' default pairing (sandbox
   // workspace-write + approval ask).
   const [accessMode, setAccessMode] = useState<string | null>('workspace-write')
+  // Model / effort rosters are static stand-ins (see MODELS / EFFORTS above).
+  const [model, setModel] = useState<string | null>('deepseek-chat')
+  const [effort, setEffort] = useState<string | null>('max')
 
   return (
     <section
@@ -617,7 +653,46 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                         aria-expanded={open}
                         onClick={toggle}
                       >
-                        <AccessChipFace selected={selected} />
+                      {/* Face rolls up on every selection change — the
+                          generic Dropdown behavior, keyed by the value. */}
+                      <span className="ui-dd-face" key={selected?.id ?? 'none'}>
+                        {selected?.icon !== undefined ? (
+                          <span className="ui-dd-optico">{selected.icon}</span>
+                        ) : null}
+                        <span className="ui-dd-label">
+                          {selected?.label ?? '访问模式'}
+                        </span>
+                      </span>
+                      <Icon className="chip-chev">
+                        <path d="m6 9l6 6l6-6" />
+                      </Icon>
+                      </button>
+                    </Tooltip>
+                  )}
+                />
+              </div>
+              <div className="composer-right">
+                <Dropdown
+                  headSlot="selected"
+                  options={MODELS}
+                  value={model}
+                  onChange={setModel}
+                  searchable={false}
+                  placement="top-right"
+                  fitContent
+                  cycleShortcut="Mod+M"
+                  renderTrigger={({ open, toggle, selected, shortcut }) => (
+                    <Tooltip label="选择模型" shortcut={shortcut} placement="top-left">
+                      <button
+                        type="button"
+                        className="model-chip"
+                        aria-haspopup="listbox"
+                        aria-expanded={open}
+                        onClick={toggle}
+                      >
+                        <span className="ui-dd-face" key={selected?.id ?? 'none'}>
+                          <span className="ui-dd-label">{selected?.label ?? '选择模型'}</span>
+                        </span>
                         <Icon className="chip-chev">
                           <path d="m6 9l6 6l6-6" />
                         </Icon>
@@ -625,33 +700,42 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     </Tooltip>
                   )}
                 />
-              </div>
-              <div className="composer-right">
-                <Tooltip label="选择模型" shortcut="Ctrl+M" placement="top-left">
-                  <button className="model-chip">
-                    {/* provider mark placeholder: plain circle */}
-                    <Icon className="model-mark">
-                      <circle cx="12" cy="12" r="9" />
-                    </Icon>
-                    deepseek-chat
-                    <Icon className="chip-chev">
-                      <path d="m6 9l6 6l6-6" />
-                    </Icon>
-                  </button>
-                </Tooltip>
-                <button className="model-chip">
-                  {/* lucide:gauge */}
-                  <Icon className="gauge-ico">
-                    <path d="m12 14l4-4M3.34 19a10 10 0 1 1 17.32 0" />
-                  </Icon>
-                  最高
-                  <Icon className="chip-chev">
-                    <path d="m6 9l6 6l6-6" />
-                  </Icon>
-                </button>
-                <button
+                <Dropdown
+                  headSlot="selected"
+                  options={EFFORTS}
+                  value={effort}
+                  onChange={setEffort}
+                  searchable={false}
+                  placement="top-right"
+                  fitContent
+                  cycleShortcut="Mod+T"
+                  renderTrigger={({ open, toggle, selected, shortcut }) => (
+                    <Tooltip label="思考等级" shortcut={shortcut} placement="top-left">
+                      <button
+                        type="button"
+                        className="model-chip"
+                        aria-haspopup="listbox"
+                        aria-expanded={open}
+                        onClick={toggle}
+                      >
+                        {selected?.icon !== undefined ? (
+                          <span className="ui-dd-optico">{selected.icon}</span>
+                        ) : null}
+                        <span className="ui-dd-face" key={selected?.id ?? 'none'}>
+                          <span className="ui-dd-label">{selected?.label ?? '思考等级'}</span>
+                        </span>
+                        <Icon className="chip-chev">
+                          <path d="m6 9l6 6l6-6" />
+                        </Icon>
+                      </button>
+                    </Tooltip>
+                  )}
+                />
+                <MetaButton
+                  label="发送"
+                  tip="发送"
+                  tipPlacement="top-left"
                   className="send-btn"
-                  aria-label="发送"
                   onClick={() => {
                     // A real send means a conversation has started; the
                     // harness pins the agent preset at session creation, so
@@ -664,7 +748,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                   <Icon>
                     <path d="m5 12l7-7 7 7m-7 7V5" />
                   </Icon>
-                </button>
+                </MetaButton>
               </div>
             </div>
             </div>

@@ -66,6 +66,34 @@
   white-space: nowrap;
 }
 
+/* Roll-up face swap on every selection change: the trigger face is keyed by
+   the current value, so switching (from the panel OR a cycle shortcut)
+   remounts it and the new content slides up into place. */
+.ui-dd-face {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  animation: ui-dd-face-roll 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes ui-dd-face-roll {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-dd-face {
+    animation: none;
+  }
+}
+
 /* Trigger-side label caps at a chip-friendly width; panel labels size off
    their wrapping .ui-dd-text column instead. */
 .ui-dd-trigger .ui-dd-label {

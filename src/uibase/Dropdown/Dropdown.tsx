@@ -100,6 +100,8 @@ export interface DropdownProps {
     selected: DropdownOption | undefined
     /** Pre-expanded shortcut hint for the trigger's tooltip. */
     shortcut?: string
+    /** Latest value key for animation bindings (key changes on switch). */
+    valueKey: string | null
   }) => ReactElement
   /** Extra class on the root wrapper so app-side CSS can retheme a
    *  particular instance (e.g. accent-colored access chip). */
@@ -447,6 +449,7 @@ export function Dropdown({
           toggle: open ? requestClose : openPanel,
           selected,
           shortcut: cycleShortcut !== undefined ? shortcutLabel(cycleShortcut) : undefined,
+          valueKey: selected?.id ?? null,
         })
       ) : (
         <button
@@ -495,7 +498,12 @@ export function Dropdown({
             </>
           )}
         </span>
-        <span className="ui-dd-label">{selected === undefined ? placeholder : selected.label}</span>
+        {/* Selection changes roll up through the face (panel picks AND the
+            cycle shortcut hit the same path; key remount drives the CSS
+            entrance). */}
+        <span className="ui-dd-face" key={selected?.id ?? 'none'}>
+          <span className="ui-dd-label">{selected === undefined ? placeholder : selected.label}</span>
+        </span>
         {/* lucide:chevron-down */}
         <Icon className="ui-dd-chev">
           <path d="m6 9l6 6 6-6" />
