@@ -652,16 +652,20 @@ export function useDshSession(
     [],
   )
 
-  /** session/queue frames are full snapshots of one session's queue. */
+  /** session/queue frames are full snapshots of one session's queue. Context
+   *  items (synthetic model-context notes, e.g. a policy change) stay
+   *  invisible until claimed per the harness contract — never rendered. */
   const handleQueue = useCallback(
     (frame: SessionQueueFrame): void => {
       if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
       setQueue(
-        frame.items.map((item) => ({
-          id: item.id,
-          placement: item.placement,
-          text: contentText(item.message?.content),
-        })),
+        frame.items
+          .filter((item) => item.placement !== 'context')
+          .map((item) => ({
+            id: item.id,
+            placement: item.placement,
+            text: contentText(item.message?.content),
+          })),
       )
     },
     [],

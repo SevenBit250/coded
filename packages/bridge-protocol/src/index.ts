@@ -5,6 +5,7 @@
 
 import { platform } from 'node:os'
 export * from './frames.js'
+export * from './semantic.js'
 
 /**
  * Default pipe endpoint for a scope name (e.g. the harness profile or a

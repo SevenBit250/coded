@@ -116,15 +116,21 @@ export function useDshDirectory(): DshDirectory {
     (frame: HostFrame): void => {
       switch (frame.type) {
         case 'host/session-added': {
+          // Re-announcements happen when the backend attaches a known session
+          // (e.g. a models read publishes its agent) — never clobber known
+          // metadata; only genuinely new sessions get a placeholder row, and
+          // the real title arrives via the refresh below.
+          if (sessionsRef.current.has(frame.sessionId)) return
           sessionsRef.current.set(frame.sessionId, {
             id: frame.sessionId,
             title: '新会话',
             updatedAt: Date.now(),
-            running: !frame.blank,
+            running: false,
             errored: false,
             blank: frame.blank,
           })
           publish()
+          refresh()
           return
         }
         case 'host/session-removed': {

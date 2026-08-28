@@ -6,12 +6,20 @@
  *
  * Wire facts this file knows about (and the adapter passes through verbatim):
  *  - unary responses arrive as full-form ServerResponse documents
- *    ({type:'server-response', rpcId, result:{ok, value|error}});
+ *    ({type:'server-response', rpcId, result:{ok, value|error}}) — LEGACY
+ *    pass-through methods (session.*, workspace.*, respond);
+ *  - `coded.*` semantic methods (M1+) answer with Coded-domain payloads
+ *    directly, typed by @coded/bridge-protocol/semantic;
  *  - downstream frames arrive as full-form ServerRequest documents
- *    ({type:'server-request', rpcId, method, payload}); the mux frame itself
- *    sits in the payload slot, and the ones we care about are
- *    `{type:'session/event', sessionId, event}`.
+ *    ({type:'server-request', rpcId, method, payload}); the frame itself sits
+ *    in the payload slot.
  */
+
+import type {
+  CodedModelSelection,
+  CodedModelsSnapshot,
+  CodedPermissionModes,
+} from '@coded/bridge-protocol'
 
 /** Lifecycle status pushed by the shell (see shared/bridge.ts). */
 export type DshStatus = import('../../../shared/bridge').DshBridgeStatus
@@ -222,6 +230,41 @@ export const dsh = {
   /** Remove one queued message (S2.3 surface; steer/edit come later). */
   async removeQueuedMessage(sessionId: string, itemId: string): Promise<void> {
     await dsh.call('session.updateQueue', { sessionId, itemId, action: { kind: 'remove' } })
+  },
+
+  /** ---- Semantic domain (M1 pilot): coded.* methods only below. Payloads
+   *     arrive as Coded-domain shapes (no backend envelope) — see
+   *     codedbridge-protocol.md §2. ---- */
+
+  /** Model roster + current selection for a session. */
+  async listModels(sessionId: string): Promise<CodedModelsSnapshot> {
+    return (await window.dshDesktop.dsh.invoke('coded.models.list', { sessionId })) as CodedModelsSnapshot
+  },
+
+  /** Select the session's model (and optional reasoning effort). */
+  async selectModel(
+    sessionId: string,
+    provider: string,
+    model: string,
+    reasoningEffort?: string,
+  ): Promise<CodedModelSelection> {
+    const value = (await window.dshDesktop.dsh.invoke('coded.models.select', {
+      sessionId,
+      provider,
+      model,
+      ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+    })) as { selection: CodedModelSelection }
+    return value.selection
+  },
+
+  /** The deployment's permission modes. */
+  async permissionModes(): Promise<CodedPermissionModes> {
+    return (await window.dshDesktop.dsh.invoke('coded.permission.modes', {})) as CodedPermissionModes
+  },
+
+  /** Switch a session's permission mode. */
+  async setPermissionMode(sessionId: string, modeId: string): Promise<void> {
+    await window.dshDesktop.dsh.invoke('coded.permission.set', { sessionId, modeId })
   },
 
   async renameWorkspace(workspaceId: string, title: string): Promise<void> {

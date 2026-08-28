@@ -25,6 +25,7 @@ import { ApprovalCard, QuestionCard } from '../dsh/gates'
 import { useDshSession } from '../dsh/use-dsh-session'
 import { useDshDirectory } from '../dsh/use-dsh-directory'
 import { dsh } from '../dsh/client'
+import type { CodedAccessMode, CodedModelsSnapshot } from '@coded/bridge-protocol'
 
 /** Main screen props. */
 export interface MainProps {
@@ -214,54 +215,11 @@ const PROJECT_ACTIONS: readonly DropdownAction[] = [
 ]
 
 /**
- * Model / reasoning-effort rosters: static stand-ins for now. The harness
- * side loads models via ModelDirectory (api call on open) and reads effort
- * from the session projection — wire these up once the transport lands.
+ * Reasoning-effort display names for known adapter effort ids; unknown ids
+ * fall back to the adapter-supplied name (semantic AccessMode/effort names
+ * are backend English — the shell localizes the well-known ones).
  */
-const MODELS: readonly DropdownOption[] = [
-  { id: 'deepseek-chat', label: 'deepseek-chat' },
-  { id: 'deepseek-reasoner', label: 'deepseek-reasoner' },
-]
-
-const EFFORTS: readonly DropdownOption[] = [
-  {
-    id: 'low',
-    label: '低',
-    // lucide:gauge
-    icon: (
-      <Icon>
-        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
-      </Icon>
-    ),
-  },
-  {
-    id: 'medium',
-    label: '中',
-    icon: (
-      <Icon>
-        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
-      </Icon>
-    ),
-  },
-  {
-    id: 'high',
-    label: '高',
-    icon: (
-      <Icon>
-        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
-      </Icon>
-    ),
-  },
-  {
-    id: 'max',
-    label: '最高',
-    icon: (
-      <Icon>
-        <path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0" />
-      </Icon>
-    ),
-  },
-]
+const EFFORT_LABELS: Record<string, string> = { low: '低', medium: '中', high: '高', max: '最高' }
 
 /**
  * Working modes, mirrored from the harness agent presets (ids + zh copy per
@@ -321,16 +279,13 @@ const MODES: readonly DropdownOption[] = [
   },
 ]
 
-/** Time-of-day greeting (the reference opens with a "care" tone). */
 /**
- * Access presets — the harness sandbox trio, verbatim from
- * permission-presets' knobStateSchema (read-only | workspace-write |
- * danger-full-access). Plan mode is NOT one of them: it belongs to the
- * separate /plan domain and will get its own composer affordance later.
+ * Access-mode display copy for the known permission preset ids. The id list
+ * itself comes from the backend (`coded.permission.modes`) — unknown ids fall
+ * back to the backend-supplied name.
  */
-const ACCESS_MODES: readonly DropdownOption[] = [
-  {
-    id: 'read-only',
+const ACCESS_MODE_DISPLAY: Record<string, { label: string; description: string; icon: ReactElement }> = {
+  'read-only': {
     label: '变更前确认',
     description: '改文件前先问我。',
     // lucide:hand
@@ -343,8 +298,7 @@ const ACCESS_MODES: readonly DropdownOption[] = [
       </Icon>
     ),
   },
-  {
-    id: 'workspace-write',
+  'workspace-write': {
     label: '自动编辑',
     description: '自动编辑工作区内文件。',
     // lucide:shield-check
@@ -355,8 +309,7 @@ const ACCESS_MODES: readonly DropdownOption[] = [
       </Icon>
     ),
   },
-  {
-    id: 'danger-full-access',
+  'danger-full-access': {
     label: '完全访问',
     description: '减少确认次数。',
     // lucide:lock-open
@@ -367,7 +320,7 @@ const ACCESS_MODES: readonly DropdownOption[] = [
       </Icon>
     ),
   },
-]
+}
 
 /** Context actions behind the composer's ＋ button (image ref). */
 const CONTEXT_ACTIONS: readonly DropdownAction[] = [
@@ -632,7 +585,10 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const directory = useDshDirectory()
   const session = useDshSession(selectedSession, {
     workspaceId: selectedProject,
-    onSessionCreated: setSelectedSession,
+    onSessionCreated: (id) => {
+      setSelectedSession(id)
+      applyPending(id)
+    },
   })
 
   // Live title/recency: a finished turn's title write rides the next
@@ -738,7 +694,10 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   /** New session in a workspace: create blank (hidden in the list until its
    *  first turn, harness parity) and open it immediately. */
   const addSession = (wsId: string): void => {
-    void dsh.createSession({ workspaceId: wsId }).then(setSelectedSession)
+    void dsh.createSession({ workspaceId: wsId }).then((id) => {
+      setSelectedSession(id)
+      applyPending(id)
+    })
   }
 
   /** Route a session row-menu action (shared by grouped and flat views). */
@@ -795,12 +754,201 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     setDraft('')
     session.send(text)
   }
-  // Access preset: defaults to harness' default pairing (sandbox
-  // workspace-write + approval ask).
+  // Access mode / model / effort — the semantic domain pilot (M1): all three
+  // consume `coded.*` methods only. Choices made before a session exists are
+  // kept as pending and applied the moment a session is created.
   const [accessMode, setAccessMode] = useState<string | null>('workspace-write')
-  // Model / effort rosters are static stand-ins (see MODELS / EFFORTS above).
-  const [model, setModel] = useState<string | null>('deepseek-chat')
-  const [effort, setEffort] = useState<string | null>('max')
+  const [accessConfirm, setAccessConfirm] = useState<string | null>(null)
+  const [models, setModels] = useState<CodedModelsSnapshot | null>(null)
+  const pendingRef = useRef<{
+    modeId?: string
+    provider?: string
+    model?: string
+    reasoningEffort?: string
+  } | null>(null)
+  useEffect(() => {
+    // A fresh draft keeps the last roster visible (no clear on null) — only
+    // an active session pulls its own snapshot.
+    if (selectedSession === null) return
+    let stale = false
+    void dsh
+      .listModels(selectedSession)
+      .then((snapshot) => {
+        if (!stale) setModels(snapshot)
+      })
+      .catch((error: unknown) => {
+        console.log(`[composer] models load failed: ${String(error)}`)
+      })
+    return () => {
+      stale = true
+    }
+  }, [selectedSession])
+  // Permission preset roster: a deployment fact, fetched once the bridge is
+  // up (a mount-time fetch would race the connection and stay empty).
+  const [accessModes, setAccessModes] = useState<CodedAccessMode[]>([])
+  useEffect(() => {
+    let cancelled = false
+    let fetched = false
+    const fetchModes = (): void => {
+      if (fetched) return
+      fetched = true
+      void dsh
+        .permissionModes()
+        .then((p) => {
+          if (!cancelled) setAccessModes(p.modes)
+        })
+        .catch((error: unknown) => {
+          fetched = false
+          console.log(`[composer] permission modes load failed: ${String(error)}`)
+        })
+    }
+    void dsh.status().then((s) => {
+      if (s === 'bridge-connected') fetchModes()
+    })
+    const off = dsh.onStatus((s) => {
+      if (s === 'bridge-connected') fetchModes()
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [])
+
+  /** Apply pre-session choices to a freshly created session (fire-and-forget
+   *  invokes, dispatched before the first prompt through the ordered pipe). */
+  const applyPending = (sessionId: string): void => {
+    const pending = pendingRef.current
+    if (pending === null) return
+    pendingRef.current = null
+    if (pending.modeId !== undefined) {
+      void dsh.setPermissionMode(sessionId, pending.modeId).catch((error: unknown) => {
+        console.log(`[composer] pending permission set failed: ${String(error)}`)
+      })
+    }
+    if (pending.provider !== undefined && pending.model !== undefined) {
+      void dsh
+        .selectModel(sessionId, pending.provider, pending.model, pending.reasoningEffort)
+        .catch((error: unknown) => {
+          console.log(`[composer] pending model select failed: ${String(error)}`)
+        })
+    }
+  }
+
+  const modelKey = (provider: string, model: string): string => `${provider}::${model}`
+  const parseModelKey = (key: string): { provider: string; model: string } => {
+    const [provider, model] = key.split('::')
+    return { provider: provider ?? '', model: model ?? '' }
+  }
+  const selectedRoute = useMemo(
+    () =>
+      models?.routes.find(
+        (r) => r.provider === models.current.provider && r.model === models.current.model,
+      ),
+    [models],
+  )
+  const applyModelSelection = (selection: {
+    provider: string
+    model: string
+    reasoningEffort?: string
+  }): void => {
+    if (selectedSession === null) {
+      // Pre-session choice: remember it; applied when the session is created.
+      pendingRef.current = { ...pendingRef.current, ...selection }
+      return
+    }
+    void dsh
+      .selectModel(
+        selectedSession,
+        selection.provider,
+        selection.model,
+        selection.reasoningEffort,
+      )
+      .then(() => dsh.listModels(selectedSession))
+      .then((snapshot) => setModels(snapshot))
+      .catch((error: unknown) => {
+        console.log(`[composer] model select failed: ${String(error)}`)
+      })
+  }
+  const onModelChange = (key: string | null): void => {
+    if (key === null) return
+    const { provider, model } = parseModelKey(key)
+    // Switching models drops the old model's effort — the new route's
+    // default applies (selectModel without reasoningEffort).
+    applyModelSelection({ provider, model })
+  }
+  const onEffortChange = (effortId: string | null): void => {
+    if (models === null || effortId === null) return
+    applyModelSelection({
+      provider: models.current.provider,
+      model: models.current.model,
+      ...(effortId === '' ? {} : { reasoningEffort: effortId }),
+    })
+  }
+  const submitAccessMode = (modeId: string): void => {
+    setAccessMode(modeId)
+    setAccessConfirm(null)
+    if (selectedSession === null) {
+      // Pre-session choice: remember it; applied when the session is created.
+      pendingRef.current = { ...pendingRef.current, modeId }
+      return
+    }
+    void dsh.setPermissionMode(selectedSession, modeId).catch((error: unknown) => {
+      console.log(`[composer] permission set failed: ${String(error)}`)
+    })
+  }
+
+  /** Semantic roster → dropdown options. */
+  const modelOptions = useMemo<DropdownOption[]>(() => {
+    if (models === null) return []
+    const options: DropdownOption[] = models.routes.map((r) => ({
+      id: modelKey(r.provider, r.model),
+      label: r.modelName,
+      ...(r.description !== undefined ? { description: r.description } : {}),
+    }))
+    // Advisory catalog: the current route may be absent — keep it visible.
+    const currentKey = modelKey(models.current.provider, models.current.model)
+    if (!options.some((o) => o.id === currentKey)) {
+      options.push({ id: currentKey, label: models.current.model })
+    }
+    return options
+  }, [models])
+  const currentModelKey =
+    models !== null ? modelKey(models.current.provider, models.current.model) : null
+
+  const effortOptions = useMemo<DropdownOption[]>(() => {
+    const efforts = selectedRoute?.efforts
+    if (efforts === undefined) return []
+    const options: DropdownOption[] = efforts.map((e) => ({
+      id: e.id,
+      label: EFFORT_LABELS[e.id] ?? e.name,
+      ...(e.description !== undefined ? { description: e.description } : {}),
+    }))
+    // The unset option preserves the adapter/provider default effort.
+    options.unshift({ id: '', label: '默认' })
+    return options
+  }, [selectedRoute])
+  const currentEffort = models?.current.reasoningEffort ?? ''
+
+  const accessModeOptions = useMemo<DropdownOption[]>(
+    () =>
+      accessModes.map((m) => ({
+        id: m.id,
+        label: ACCESS_MODE_DISPLAY[m.id]?.label ?? m.name,
+        description: ACCESS_MODE_DISPLAY[m.id]?.description ?? m.description,
+        icon: ACCESS_MODE_DISPLAY[m.id]?.icon,
+      })),
+    [accessModes],
+  )
+
+  const onAccessModeChange = (modeId: string | null): void => {
+    if (modeId === null) return
+    // Risk gate: full access needs an explicit confirm.
+    if (modeId === 'danger-full-access' && modeId !== accessMode) {
+      setAccessConfirm(modeId)
+      return
+    }
+    submitAccessMode(modeId)
+  }
 
   return (
     <section
@@ -1137,14 +1285,14 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     </Tooltip>
                   )}
                 />
-                {/* Access presets: harness sandbox trio. Switching maps to
-                    the `/permission {id}` command + a risk confirm for
-                    danger-full-access once the transport lands. */}
+                {/* Access modes: the backend's permission roster
+                    (coded.permission.modes); switching maps to
+                    `coded.permission.set`, risk-gated for full access. */}
                 <Dropdown
                   headSlot="selected"
-                  options={ACCESS_MODES}
+                  options={accessModeOptions}
                   value={accessMode}
-                  onChange={setAccessMode}
+                  onChange={onAccessModeChange}
                   searchable={false}
                   placement="top-left"
                   className="dd-access"
@@ -1178,11 +1326,12 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 />
               </div>
               <div className="composer-right">
+                {/* Model roster: `coded.models.list` for the active session. */}
                 <Dropdown
                   headSlot="selected"
-                  options={MODELS}
-                  value={model}
-                  onChange={setModel}
+                  options={modelOptions}
+                  value={currentModelKey}
+                  onChange={onModelChange}
                   searchable={false}
                   placement="top-right"
                   fitContent
@@ -1206,37 +1355,38 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     </Tooltip>
                   )}
                 />
-                <Dropdown
-                  headSlot="selected"
-                  options={EFFORTS}
-                  value={effort}
-                  onChange={setEffort}
-                  searchable={false}
-                  placement="top-right"
-                  fitContent
-                  cycleShortcut="Mod+T"
-                  renderTrigger={({ open, toggle, selected, shortcut }) => (
-                    <Tooltip label="思考等级" shortcut={shortcut} placement="top-left">
-                      <button
-                        type="button"
-                        className="model-chip"
-                        aria-haspopup="listbox"
-                        aria-expanded={open}
-                        onClick={toggle}
-                      >
-                        {selected?.icon !== undefined ? (
-                          <span className="ui-dd-optico">{selected.icon}</span>
-                        ) : null}
-                        <span className="ui-dd-face" key={selected?.id ?? 'none'}>
-                          <span className="ui-dd-label">{selected?.label ?? '思考等级'}</span>
-                        </span>
-                        <Icon className="chip-chev">
-                          <path d="m6 9l6 6l6-6" />
-                        </Icon>
-                      </button>
-                    </Tooltip>
-                  )}
-                />
+                {/* Reasoning efforts: only for routes the adapter marks as
+                    thinking-capable (`reasoning` on the model route). */}
+                {selectedRoute?.efforts !== undefined && (
+                  <Dropdown
+                    headSlot="selected"
+                    options={effortOptions}
+                    value={currentEffort}
+                    onChange={onEffortChange}
+                    searchable={false}
+                    placement="top-right"
+                    fitContent
+                    cycleShortcut="Mod+T"
+                    renderTrigger={({ open, toggle, selected, shortcut }) => (
+                      <Tooltip label="思考等级" shortcut={shortcut} placement="top-left">
+                        <button
+                          type="button"
+                          className="model-chip"
+                          aria-haspopup="listbox"
+                          aria-expanded={open}
+                          onClick={toggle}
+                        >
+                          <span className="ui-dd-face" key={selected?.id ?? 'none'}>
+                            <span className="ui-dd-label">{selected?.label ?? '思考等级'}</span>
+                          </span>
+                          <Icon className="chip-chev">
+                            <path d="m6 9l6 6l6-6" />
+                          </Icon>
+                        </button>
+                      </Tooltip>
+                    )}
+                  />
+                )}
                 {/* Running turn: the send button becomes stop (interrupt). */}
                 {activeRunning ? (
                   <Tooltip label="停止" placement="top-left">
@@ -1274,6 +1424,34 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         </main>
         </div>
       </div>
+
+      {/* Risk gate: switching to full access needs an explicit confirm. */}
+      <Dialog
+        open={accessConfirm !== null}
+        onClose={() => setAccessConfirm(null)}
+        label="切换访问权限"
+      >
+        <div className="dlg">
+          <h2 className="dlg-title">切换到完全访问？</h2>
+          <p className="dlg-text">
+            将减少工具调用的确认提示，模型可以不经确认直接执行有风险的操作。
+          </p>
+          <div className="dlg-actions">
+            <button type="button" className="dlg-btn" onClick={() => setAccessConfirm(null)}>
+              取消
+            </button>
+            <button
+              type="button"
+              className="dlg-btn dlg-btn--danger"
+              onClick={() => {
+                if (accessConfirm !== null) submitAccessMode(accessConfirm)
+              }}
+            >
+              确认切换
+            </button>
+          </div>
+        </div>
+      </Dialog>
 
       {/* Row-action dialogs: rename (workspace/session, duplicate-checked)
           and the delete-workspace confirm. */}
