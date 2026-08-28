@@ -392,7 +392,16 @@ export function useDshSession(
   const appendAssistantDelta = useCallback((text: string): void => {
     setMessages((prev) => {
       const last = prev[prev.length - 1]
-      if (last !== undefined && last.role === 'assistant' && last.streaming === true) {
+      // Merge target is a PLAIN text bubble only — a streaming reasoning card
+      // is also role=assistant/streaming, and some models emit text-deltas
+      // before the reasoning block-end; merging would pour the body into the
+      // thinking card.
+      if (
+        last !== undefined &&
+        last.role === 'assistant' &&
+        last.kind === undefined &&
+        last.streaming === true
+      ) {
         return [...prev.slice(0, -1), { ...last, text: last.text + text }]
       }
       return [...prev, { id: nextId(), role: 'assistant', text, streaming: true }]

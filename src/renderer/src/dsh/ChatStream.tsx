@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import type { ChatMessage } from './use-dsh-session'
+import { Markdown } from './Markdown'
 
 export interface ChatStreamProps {
   messages: ChatMessage[]
@@ -117,7 +118,7 @@ export function ChatStream({ messages, trailTick = 0, children }: ChatStreamProp
               {message.error !== undefined ? (
                 <span className="chat-error">发送失败：{message.error}</span>
               ) : (
-                message.text
+                <Markdown text={message.text} />
               )}
             </div>
           </div>
