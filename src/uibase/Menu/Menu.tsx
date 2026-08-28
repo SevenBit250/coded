@@ -87,6 +87,15 @@ export function Menu({ trigger, children, className }: MenuProps): ReactElement 
   )
 }
 
+/** Non-interactive group caption inside a menu. */
+export function MenuLabel({ children }: { children: ReactNode }): ReactElement {
+  return (
+    <div className="ui-menu-label" role="presentation">
+      {children}
+    </div>
+  )
+}
+
 /** MenuItem props. */
 export interface MenuItemProps {
   /** Fires after the menu starts closing. */
@@ -94,22 +103,32 @@ export interface MenuItemProps {
   children: ReactNode
   /** Right-aligned shortcut hint text. */
   shortcut?: string
+  /** When set, the item renders a trailing check and checkbox semantics
+   *  (option-style menus: view options, toggles). */
+  selected?: boolean
 }
 
 /** One menu entry; clicking it also closes the parent menu. */
-export function MenuItem({ onClick, children, shortcut }: MenuItemProps): ReactElement {
+export function MenuItem({ onClick, children, shortcut, selected }: MenuItemProps): ReactElement {
   const ctx = useContext(MenuContext)
   return (
     <button
       className="ui-menu-item"
-      role="menuitem"
+      role={selected === undefined ? 'menuitem' : 'menuitemcheckbox'}
+      aria-checked={selected === undefined ? undefined : selected}
       onClick={() => {
         ctx?.requestClose()
         onClick?.()
       }}
     >
       <span>{children}</span>
-      {shortcut !== undefined && <span className="ui-menu-shortcut">{shortcut}</span>}
+      {selected === true ? (
+        <svg className="ui-menu-check" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="m3.5 8.5 3 3 6-7" />
+        </svg>
+      ) : shortcut !== undefined ? (
+        <span className="ui-menu-shortcut">{shortcut}</span>
+      ) : null}
     </button>
   )
 }

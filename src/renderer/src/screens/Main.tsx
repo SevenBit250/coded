@@ -1,8 +1,24 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown, MetaButton, ScrollArea, Spinner } from '@uibase'
+import {
+  Icon,
+  IconButton,
+  Split,
+  Tooltip,
+  WindowControls,
+  Dropdown,
+  MetaButton,
+  ScrollArea,
+  Spinner,
+  Menu,
+  MenuItem,
+  MenuDivider,
+  MenuLabel,
+} from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
+import { loadSidebarView, saveSidebarView } from '../sidebar-view'
+import type { SidebarViewState } from '../sidebar-view'
 
 /** Main screen props. */
 export interface MainProps {
@@ -40,21 +56,6 @@ const SIDEBAR_DEFAULT = 240
 const SIDEBAR_MIN = 240
 const SIDEBAR_MAX = 480
 const SIDEBAR_GAP = 3
-
-/** localStorage key holding the collapsed workspace ids (JSON array).
- *  Same `dsh-` prefix convention as the theme key. */
-const COLLAPSED_KEY = 'dsh-collapsed-workspaces'
-
-/** Read the collapsed-workspace set; a corrupt or absent entry means "all
- *  expanded" (the default). */
-function loadCollapsed(): ReadonlySet<string> {
-  try {
-    const raw = localStorage.getItem(COLLAPSED_KEY)
-    return raw !== null ? new Set(JSON.parse(raw) as string[]) : new Set()
-  } catch {
-    return new Set()
-  }
-}
 
 interface MenuIconProps {
   name: MenuIconName
@@ -454,6 +455,40 @@ function greeting(): string {
   return '晚上好，别忘了照顾好自己哦'
 }
 
+/** Recency order: smaller "minutes ago" first. */
+function byRecency(a: SessionStub, b: SessionStub): number {
+  return a.updatedMinutesAgo - b.updatedMinutesAgo
+}
+
+/** One session row: fixed lead slot (spinner/dots), title, approval tag,
+ *  recency. `selected` is the persistent pressed state (the open session). */
+function SessionRow({
+  session,
+  selected,
+  onSelect,
+}: {
+  session: SessionStub
+  selected: boolean
+  onSelect: () => void
+}): ReactElement {
+  return (
+    <button
+      className={`session-row${selected ? ' selected' : ''}`}
+      aria-pressed={selected}
+      onClick={onSelect}
+    >
+      <span className="session-lead" aria-hidden="true">
+        {session.status === 'running' && <Spinner size={12} className="session-spinner" />}
+        {session.status === 'completed' && <span className="session-dot session-dot--done" />}
+        {session.status === 'interrupted' && <span className="session-dot session-dot--stopped" />}
+      </span>
+      <span className="session-title">{session.title}</span>
+      {session.status === 'needs-confirm' && <span className="session-flag">需要确认</span>}
+      <span className="session-time">{relTime(session.updatedMinutesAgo)}</span>
+    </button>
+  )
+}
+
 /**
  * Main workspace — ZCode-like shell (placeholder until the dsh React client
  * mounts here over the Plan B custom protocol): collapsible sidebar with nav
@@ -465,21 +500,38 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
-  // Workspace groups start expanded; collapsing persists across restarts.
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(loadCollapsed)
-  const toggleWorkspace = (id: string): void => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      try {
-        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
-      } catch {
-        // Persistence is best-effort; the UI state is already correct.
-      }
+  // Sidebar view state (grouping/ordering/collapse) persists as one blob.
+  const [view, setView] = useState<SidebarViewState>(loadSidebarView)
+  const patchView = (patch: Partial<SidebarViewState>): void => {
+    setView((prev) => {
+      const next = { ...prev, ...patch }
+      saveSidebarView(next)
       return next
     })
   }
+  const toggleWorkspace = (id: string): void => {
+    patchView({
+      collapsed: view.collapsed.includes(id)
+        ? view.collapsed.filter((x) => x !== id)
+        : [...view.collapsed, id],
+    })
+  }
+  // The open session; selection lives only on the row (no sync target yet).
+  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  // View derivation: 'updated' orders sessions by recency (workspace groups
+  // follow their most recent session); 'manual' keeps declared order.
+  const orderedSessions = (sessions: SessionStub[]): SessionStub[] =>
+    view.orderBy === 'updated' ? [...sessions].sort(byRecency) : sessions
+  const orderedWorkspaces =
+    view.groupBy === 'workspace' && view.orderBy === 'updated'
+      ? [...WORKSPACES].sort(
+          (a, b) =>
+            Math.min(...a.sessions.map((s) => s.updatedMinutesAgo), Infinity) -
+            Math.min(...b.sessions.map((s) => s.updatedMinutesAgo), Infinity),
+        )
+      : WORKSPACES
+  const flatSessions =
+    view.groupBy === 'flat' ? orderedSessions(WORKSPACES.flatMap((w) => w.sessions)) : null
   const [workMode, setWorkMode] = useState<string | null>('standard')
   // Harness parity: the agent preset is pinned when the session starts, so
   // the first send flips this and locks the mode selector for the rest of
@@ -539,17 +591,54 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           <div className="section-label">
             <span>工作区</span>
             <span className="section-actions">
-              {/* View options: grouping/ordering menu (dsh web's ⋯ slot). */}
-              <IconButton
-                className="section-action"
-                label="视图选项"
-                tip="视图选项"
-                icon={
-                  <Icon viewBox="0 0 16 16" strokeWidth={1.3}>
-                    <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
-                  </Icon>
-                }
-              />
+              {/* View options: grouping + ordering menu (harness web's
+                  view-options slot), selection pinned with checks. */}
+              <Menu
+                className="view-menu"
+                trigger={({ open, toggle }) => (
+                  <IconButton
+                    className="section-action"
+                    label="视图选项"
+                    tip="视图选项"
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    onClick={toggle}
+                    icon={
+                      <Icon viewBox="0 0 16 16" strokeWidth={1.3}>
+                        <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h7" />
+                      </Icon>
+                    }
+                  />
+                )}
+              >
+                <MenuLabel>分组方式</MenuLabel>
+                <MenuItem
+                  selected={view.groupBy === 'workspace'}
+                  onClick={() => patchView({ groupBy: 'workspace' })}
+                >
+                  按工作区
+                </MenuItem>
+                <MenuItem
+                  selected={view.groupBy === 'flat'}
+                  onClick={() => patchView({ groupBy: 'flat' })}
+                >
+                  单列表
+                </MenuItem>
+                <MenuDivider />
+                <MenuLabel>排序方式</MenuLabel>
+                <MenuItem
+                  selected={view.orderBy === 'manual'}
+                  onClick={() => patchView({ orderBy: 'manual' })}
+                >
+                  手动排序
+                </MenuItem>
+                <MenuItem
+                  selected={view.orderBy === 'updated'}
+                  onClick={() => patchView({ orderBy: 'updated' })}
+                >
+                  最近更新
+                </MenuItem>
+              </Menu>
               {/* Add workspace: folder + plus, matching the web header. */}
               <IconButton
                 className="section-action"
@@ -566,64 +655,66 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           </div>
 
           <ScrollArea className="projects" label="工作区与会话" outside={6}>
-            {WORKSPACES.map((workspace) => {
-              const isCollapsed = collapsed.has(workspace.id)
-              return (
-                <div
-                  key={workspace.id}
-                  className={`workspace-group${isCollapsed ? ' collapsed' : ''}`}
-                >
-                  {/* Header row: clicking toggles the group only — the row
-                      never takes a selected tint (selection lives in the
-                      composer's workspace picker); the folder icon carries
-                      the state (open = expanded, closed = collapsed). */}
-                  <button
-                    className="project"
-                    aria-expanded={!isCollapsed}
-                    onClick={() => toggleWorkspace(workspace.id)}
+            {view.groupBy === 'flat' ? (
+              /* Flat list: every session in one recency-ordered column. */
+              <div className="session-list">
+                {flatSessions?.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    selected={selectedSession === s.id}
+                    onSelect={() => setSelectedSession(s.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              orderedWorkspaces.map((workspace) => {
+                const isCollapsed = view.collapsed.includes(workspace.id)
+                return (
+                  <div
+                    key={workspace.id}
+                    className={`workspace-group${isCollapsed ? ' collapsed' : ''}`}
                   >
-                    <span className="project-name">
-                      <Icon className="folder" viewBox="0 0 24 24" strokeWidth={1.8}>
-                        {isCollapsed ? (
-                          /* lucide:folder */
-                          <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-                        ) : (
-                          /* lucide:folder-open */
-                          <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
-                        )}
-                      </Icon>
-                      {workspace.title}
-                    </span>
-                  </button>
-                  {/* Grid-rows collapse: 1fr -> 0fr animates the group shut
-                      without measuring heights. */}
-                  <div className="workspace-sessions-wrap">
-                    <div className="workspace-sessions">
-                      {workspace.sessions.map((s) => (
-                        <button key={s.id} className="session-row">
-                          <span className="session-lead" aria-hidden="true">
-                            {s.status === 'running' && (
-                              <Spinner size={12} className="session-spinner" />
-                            )}
-                            {s.status === 'completed' && (
-                              <span className="session-dot session-dot--done" />
-                            )}
-                            {s.status === 'interrupted' && (
-                              <span className="session-dot session-dot--stopped" />
-                            )}
-                          </span>
-                          <span className="session-title">{s.title}</span>
-                          {s.status === 'needs-confirm' && (
-                            <span className="session-flag">需要确认</span>
+                    {/* Header row: clicking toggles the group only — the row
+                        never takes a selected tint (selection lives in the
+                        composer's workspace picker); the folder icon carries
+                        the state (open = expanded, closed = collapsed). */}
+                    <button
+                      className="project"
+                      aria-expanded={!isCollapsed}
+                      onClick={() => toggleWorkspace(workspace.id)}
+                    >
+                      <span className="project-name">
+                        <Icon className="folder" viewBox="0 0 24 24" strokeWidth={1.8}>
+                          {isCollapsed ? (
+                            /* lucide:folder */
+                            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                          ) : (
+                            /* lucide:folder-open */
+                            <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
                           )}
-                          <span className="session-time">{relTime(s.updatedMinutesAgo)}</span>
-                        </button>
-                      ))}
+                        </Icon>
+                        {workspace.title}
+                      </span>
+                    </button>
+                    {/* Grid-rows collapse: 1fr -> 0fr animates the group shut
+                        without measuring heights. */}
+                    <div className="workspace-sessions-wrap">
+                      <div className="workspace-sessions">
+                        {orderedSessions(workspace.sessions).map((s) => (
+                          <SessionRow
+                            key={s.id}
+                            session={s}
+                            selected={selectedSession === s.id}
+                            onSelect={() => setSelectedSession(s.id)}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </ScrollArea>
 
           <div className="side-gap" />

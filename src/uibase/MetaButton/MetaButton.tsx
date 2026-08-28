@@ -1,11 +1,13 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, ReactElement, ReactNode } from 'react'
 import { Tooltip } from '../Tooltip'
 import type { TooltipPlacement } from '../Tooltip'
 import { useShortcut, shortcutLabel } from '../Meta'
 import './MetaButton.css'
 
-/** MetaButton props. */
-export interface MetaButtonProps {
+/** MetaButton props: the MetaButton trio plus passthrough button attributes
+ *  (aria-expanded, disabled, title, …) for disclosure-style triggers. */
+export interface MetaButtonProps
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'children' | 'onClick'> {
   /** Accessible name. */
   label: string
   /** Button content (icon node, text, or a mix). */
@@ -48,6 +50,7 @@ export function MetaButton({
   tip,
   tipPlacement = 'top',
   shortcut,
+  ...rest
 }: MetaButtonProps): ReactElement {
   // Latest handler in a ref so re-renders never tear the binding down.
   useShortcut(shortcut, () => onClick?.())
@@ -62,6 +65,7 @@ export function MetaButton({
         className={`ui-metabtn${className !== undefined ? ` ${className}` : ''}`}
         aria-label={label}
         onClick={onClick}
+        {...rest}
       >
         {children}
       </button>

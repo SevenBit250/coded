@@ -455,12 +455,41 @@ html[data-platform='win32'] .anchor-bar {
   color: var(--text-dim);
 }
 
+/* Open view-options menu keeps its trigger lit (disclosure state). */
+.section-action[aria-expanded='true'] {
+  color: var(--text-dim);
+  background: rgba(var(--ink-rgb), 0.06);
+}
+
+/* The view-options menu anchors to its 22px trigger; narrower than the
+   Menu default and hugging the panel's right edge. */
+.view-menu {
+  position: relative;
+}
+
+.view-menu .ui-menu {
+  top: 30px;
+  min-width: 172px;
+}
+
 .projects {
   margin-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   /* ScrollArea owns the overflow; the pane itself just fills the space. */
+}
+
+/* Flat view: one recency-ordered column of sessions, no group headers;
+   rows read full-width like workspace rows (no tree indent). */
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-list .session-row {
+  padding-left: 9px;
 }
 
 /* Workspace group: the workspace row is the group header; its sessions hang
@@ -512,6 +541,12 @@ html[data-platform='win32'] .anchor-bar {
 
 .session-row:hover {
   background: rgba(var(--ink-rgb), 0.05);
+  color: var(--text);
+}
+
+/* Selected (open) session: a persistent version of the hover tint. */
+.session-row.selected {
+  background: rgba(var(--ink-rgb), 0.07);
   color: var(--text);
 }
 
