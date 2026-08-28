@@ -57,6 +57,40 @@ function ToolBlock({ message }: { message: ChatMessage }): ReactElement {
   )
 }
 
+/** One collapsible reasoning ("thinking") card: open while streaming,
+ *  collapsed once the block ends; click toggles a finished block. */
+function ReasoningBlock({ message }: { message: ChatMessage }): ReactElement {
+  const streaming = message.streaming === true
+  const [toggled, setToggled] = useState<boolean | null>(null)
+  const open = toggled ?? streaming
+  return (
+    <div className="chat-row chat-row--assistant">
+      <div className={`reasoning-card${streaming ? ' reasoning-card--streaming' : ''}`}>
+        <button
+          type="button"
+          className="tool-head"
+          aria-expanded={open}
+          onClick={() => {
+            if (!streaming) setToggled(!open)
+          }}
+        >
+          <span className={`tool-status tool-status--${streaming ? 'running' : 'done'}`} />
+          <span className="tool-title">思考过程</span>
+          <span className={`tool-meta${streaming ? ' tool-meta--running' : ''}`}>
+            {streaming ? '思考中' : '已完成'}
+          </span>
+          {!streaming && (
+            <span className="tool-chev" aria-hidden="true">
+              {open ? '▾' : '▸'}
+            </span>
+          )}
+        </button>
+        {open && <pre className="tool-pre reasoning-text">{message.text}</pre>}
+      </div>
+    </div>
+  )
+}
+
 export function ChatStream({ messages, trailTick = 0, children }: ChatStreamProps): ReactElement {
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -69,6 +103,8 @@ export function ChatStream({ messages, trailTick = 0, children }: ChatStreamProp
       {messages.map((message) =>
         message.kind === 'tool' ? (
           <ToolBlock key={message.id} message={message} />
+        ) : message.kind === 'reasoning' ? (
+          <ReasoningBlock key={message.id} message={message} />
         ) : message.role === 'user' ? (
           <div key={message.id} className="chat-row chat-row--user">
             <div className="chat-bubble chat-bubble--user">{message.text}</div>

@@ -38,7 +38,7 @@ export interface ChatMessage {
   /** Set when the send failed before/while dispatching. */
   error?: string
   /** 'tool' marks a tool-call block (a transcript card, not a chat bubble). */
-  kind?: 'text' | 'tool'
+  kind?: 'text' | 'tool' | 'reasoning'
   /** Tool block fields (kind === 'tool'). */
   callId?: string
   toolName?: string
@@ -205,6 +205,8 @@ export function useDshSession(
   const subscribedRef = useRef(false)
   /** callId → args summary, for the approval card's arguments line. */
   const toolCallsRef = useRef(new Map<string, string>())
+  /** Live reasoning blocks: `${turn}:${step}:${index}` → transcript id. */
+  const reasoningBlocksRef = useRef(new Map<string, string>())
   const onSessionCreatedRef = useRef(opts?.onSessionCreated)
   onSessionCreatedRef.current = opts?.onSessionCreated
   const workspaceIdRef = useRef(opts?.workspaceId)
@@ -287,6 +289,7 @@ export function useDshSession(
     sessionIdRef.current = sessionId
     setBusy(false)
     setQueue([])
+    reasoningBlocksRef.current.clear()
     if (sessionId === null) {
       setMessages([])
       return
@@ -309,6 +312,23 @@ export function useDshSession(
             const text = messageEventText(data)
             if (text !== '') rebuilt.push({ id: nextId(), role: 'user', text })
           } else if (entry.event.type === 'assistant/message') {
+            // Reasoning blocks ride the message content before the text —
+            // rebuild them as collapsed "thinking" cards.
+            const content = (data as { message?: { content?: unknown }; content?: unknown })
+              ?.message?.content
+            if (Array.isArray(content)) {
+              for (const block of content) {
+                const b = block as { type?: string; text?: string }
+                if (b?.type === 'reasoning' && typeof b.text === 'string' && b.text !== '') {
+                  rebuilt.push({
+                    id: nextId(),
+                    role: 'assistant',
+                    text: b.text,
+                    kind: 'reasoning',
+                  })
+                }
+              }
+            }
             const text = messageEventText(data)
             if (text !== '') rebuilt.push({ id: nextId(), role: 'assistant', text })
           } else if (entry.event.type === 'tool/call') {
@@ -422,6 +442,60 @@ export function useDshSession(
     [],
   )
 
+  /** Patch one transcript block by id (reasoning deltas / calibration). */
+  const patchBlock = useCallback(
+    (id: string, patch: (m: ChatMessage) => ChatMessage): void => {
+      setMessages((prev) => {
+        const i = prev.findIndex((m) => m.id === id)
+        if (i < 0) return prev
+        const updated = [...prev]
+        updated[i] = patch(prev[i])
+        return updated
+      })
+    },
+    [],
+  )
+
+  /** A live reasoning block: create on first delta (replacing a trailing
+   *  empty streaming placeholder — the thinking indicator transforms),
+   *  then accumulate. */
+  const appendReasoningDelta = useCallback((key: string, text: string): void => {
+    const existing = reasoningBlocksRef.current.get(key)
+    if (existing !== undefined) {
+      patchBlock(existing, (m) => ({ ...m, text: m.text + text }))
+      return
+    }
+    const id = nextId()
+    reasoningBlocksRef.current.set(key, id)
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      const base =
+        last !== undefined && last.kind === undefined && last.role === 'assistant' &&
+        last.text === '' && last.streaming === true && last.error === undefined
+          ? prev.slice(0, -1)
+          : prev
+      return [...base, { id, role: 'assistant', text, kind: 'reasoning', streaming: true }]
+    })
+  }, [patchBlock])
+
+  /** block-end: the assembled reasoning text calibrates the accumulation. */
+  const finalizeReasoning = useCallback((key: string, text: string): void => {
+    const id = reasoningBlocksRef.current.get(key)
+    if (id === undefined) {
+      // No live deltas seen (e.g. resumed mid-block): surface the block whole.
+      if (text !== '') {
+        const newId = nextId()
+        reasoningBlocksRef.current.set(key, newId)
+        setMessages((prev) => [
+          ...prev,
+          { id: newId, role: 'assistant', text, kind: 'reasoning' },
+        ])
+      }
+      return
+    }
+    patchBlock(id, (m) => ({ ...m, text: text !== '' ? text : m.text, streaming: false }))
+  }, [patchBlock])
+
   const handleSessionEvent = useCallback(
     (frame: SessionEventFrame): void => {
       // Only the active session's events render.
@@ -430,12 +504,32 @@ export function useDshSession(
       // SessionEvent payloads sit in the `data` slot:
       // {type:'assistant/chunk', data:{turn, step, chunk}} and
       // {type:'assistant/message', data:{turn, step, content}}.
-      const data = event.data as { chunk?: TextChunk; content?: unknown } | undefined
+      const data = event.data as
+        | { turn?: number; step?: number; chunk?: TextChunk; content?: unknown }
+        | undefined
       switch (event.type) {
         case 'assistant/chunk': {
-          const chunk = data?.chunk
+          const chunk = data?.chunk as
+            | {
+                type?: string
+                index?: number
+                text?: string
+                blockType?: string
+                block?: { type?: string; text?: string }
+              }
+            | undefined
           if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
             appendAssistantDelta(chunk.text)
+          } else if (chunk?.type === 'reasoning-delta' && typeof chunk.text === 'string') {
+            const key = `${String(data?.turn ?? 0)}:${String(data?.step ?? 0)}:${String(chunk.index ?? 0)}`
+            appendReasoningDelta(key, chunk.text)
+          } else if (
+            chunk?.type === 'block-end' &&
+            chunk.block?.type === 'reasoning' &&
+            typeof chunk.block.text === 'string'
+          ) {
+            const key = `${String(data?.turn ?? 0)}:${String(data?.step ?? 0)}:${String(chunk.index ?? 0)}`
+            finalizeReasoning(key, chunk.block.text)
           }
           return
         }
@@ -500,7 +594,7 @@ export function useDshSession(
           return
       }
     },
-    [appendAssistantDelta, finalizeAssistant],
+    [appendAssistantDelta, appendReasoningDelta, finalizeAssistant, finalizeReasoning],
   )
 
   /** Answerable approval frames: requested adds, resolved removes. Pendings
