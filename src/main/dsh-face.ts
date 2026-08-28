@@ -134,8 +134,17 @@ function harnessRoot(): string {
  *  in the status broadcast for the renderer to present. */
 export function startDshFace(): void {
   registerDshIpc()
+  // The bridge scope is minted here once per app run (single source of
+  // truth): the runtime child learns it through env, the bridge client
+  // connects to the same name. Per-run names sidestep the Windows
+  // handle-inheritance EADDRINUSE a zombie child would otherwise cause.
+  const scope = `p${String(process.pid)}-${Math.random().toString(36).slice(2, 6)}`
   runtime = new DshRuntime({
     harnessRoot: harnessRoot(),
+    // Host-only tree (no HTTP/browser surface); readiness is the bridge's own
+    // listening line, not a web URL.
+    args: ['--profile', 'coded'],
+    extraEnv: { DSH_CODED_BRIDGE_SCOPE: scope },
     log: (line) => console.log(`[dsh] ${line}`),
   })
   runtime.on('status', (status: 'starting' | 'ready' | 'exited' | 'failed') => {
@@ -144,9 +153,7 @@ export function startDshFace(): void {
   })
   void runtime.start().then(() => {
     bridge = new BridgeClient({
-      // Must match the adapter's `pipeName` in the profile patch (dev: 'dev').
-      // TODO(S3): single source of truth — read from config instead of mirroring.
-      scope: 'dev',
+      scope,
       version: app.getVersion(),
       onStatus: (status) => {
         bridgeStatus = status

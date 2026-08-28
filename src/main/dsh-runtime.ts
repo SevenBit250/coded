@@ -19,16 +19,22 @@ export type DshRuntimeStatus = 'starting' | 'ready' | 'exited' | 'failed'
 export interface DshRuntimeOptions {
   /** Harness repository root (cwd for the child; also anchors tsx resolution). */
   harnessRoot: string
-  /** CLI entry relative to harnessRoot. Dev runs the TS source via tsx. */
-  entryPath?: string
-  /** Profile name to boot ('web' = `dsh web`). */
-  profile?: string
+  /**
+   * CLI arguments after the entry. Default boots the web surface on an
+   * ephemeral port; the Coded shell passes ['--profile', 'coded'] instead —
+   * a host-only tree with no HTTP listener at all.
+   */
+  args?: string[]
+  /** Extra env entries merged over process.env for the child. */
+  extraEnv?: Record<string, string>
   /** Per-line log sink (child stdout/stderr). */
   log?: (line: string) => void
 }
 
-/** The readiness line the web app prints once the tree is up. */
-const READY_PATTERN = /dsh web: http:\/\/127\.0\.0\.1:(\d+)/
+/** The readiness lines: the web surface prints its bound URL; a host-only
+ *  profile has no HTTP listener, so its ready line is the bridge's. Whichever
+ *  the booted surface prints first marks the tree as up. */
+const READY_PATTERNS = [/dsh web: http:\/\/127\.0\.0\.1:(\d+)/, /\[coded-bridge\] listening on /]
 
 export class DshRuntime extends EventEmitter {
   private child: ChildProcess | null = null
@@ -55,13 +61,13 @@ export class DshRuntime extends EventEmitter {
     // the packaged app will point this at a bundled node.exe (S3) — the
     // ELECTRON_RUN_AS_NODE trick stays reserved until harness lands Node 24
     // internals compatibility. Requires `pnpm run build` in the harness repo.
-    const entry = this.opts.entryPath ?? 'apps/cli/lib/bin.js'
-    const profile = this.opts.profile ?? 'web'
+    const entry = 'apps/cli/lib/bin.js'
+    const args = this.opts.args ?? ['web', '--port', '0', '--no-open']
     const nodeCommand = process.env['DSH_NODE'] ?? 'node'
     this.emitStatus('starting')
-    const child = spawn(nodeCommand, [entry, profile, '--port', '0', '--no-open'], {
+    const child = spawn(nodeCommand, [entry, ...args], {
       cwd: this.opts.harnessRoot,
-      env: { ...process.env },
+      env: { ...process.env, ...this.opts.extraEnv },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     })
@@ -73,11 +79,14 @@ export class DshRuntime extends EventEmitter {
       rl.on('line', (line) => {
         log(line)
         if (this.ready) return
-        const match = READY_PATTERN.exec(line)
-        if (match !== null) {
-          this.ready = true
-          this.portValue = Number(match[1])
-          this.emitStatus('ready')
+        for (const pattern of READY_PATTERNS) {
+          const match = pattern.exec(line)
+          if (match !== null) {
+            this.ready = true
+            if (match[1] !== undefined) this.portValue = Number(match[1])
+            this.emitStatus('ready')
+            return
+          }
         }
       })
     }

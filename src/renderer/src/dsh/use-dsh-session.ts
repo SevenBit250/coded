@@ -68,26 +68,31 @@ export function useDshSession(): DshSession {
       subscribedRef.current = true
       console.log('[dsh-session] opening mux stream')
       void dsh
-        .openMux({
-          onEvent: (frame) => {
-            handleSessionEvent(frame)
+        .openMux(
+          {
+            onEvent: (frame) => {
+              handleSessionEvent(frame)
+            },
+            onEnd: (reason) => {
+              console.log(`[dsh-session] mux ended: ${reason ?? 'closed'}`)
+              subscribedRef.current = false
+              // Self-heal: a mux that dies while the bridge stays connected
+              // would otherwise leave the UI deaf until the next reconnect.
+              if (!cancelled && lastStatus === 'bridge-connected') {
+                retryTimer = setTimeout(() => {
+                  retryTimer = null
+                  if (!cancelled && !subscribedRef.current && lastStatus === 'bridge-connected') {
+                    console.log('[dsh-session] resubscribing mux after unexpected end')
+                    subscribe()
+                  }
+                }, 1000)
+              }
+            },
           },
-          onEnd: (reason) => {
-            console.log(`[dsh-session] mux ended: ${reason ?? 'closed'}`)
-            subscribedRef.current = false
-            // Self-heal: a mux that dies while the bridge stays connected
-            // would otherwise leave the UI deaf until the next reconnect.
-            if (!cancelled && lastStatus === 'bridge-connected') {
-              retryTimer = setTimeout(() => {
-                retryTimer = null
-                if (!cancelled && !subscribedRef.current && lastStatus === 'bridge-connected') {
-                  console.log('[dsh-session] resubscribing mux after unexpected end')
-                  subscribe()
-                }
-              }, 1000)
-            }
-          },
-        })
+          // Only chat traffic crosses the pipe — bulky projections stay
+          // host-side (adapter-side filter, see BridgeStreamOpenPayload).
+          { types: ['session/event'] },
+        )
         .catch((error) => {
           console.log(`[dsh-session] mux open failed: ${String(error)}`)
           subscribedRef.current = false

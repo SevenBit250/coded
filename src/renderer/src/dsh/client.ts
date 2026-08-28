@@ -95,7 +95,9 @@ export const dsh = {
   /**
    * Subscribe to the mux downstream stream. `onEvent` receives only
    * session/event frames; other frame types (approvals, projections) arrive
-   * later through dedicated helpers.
+   * later through dedicated helpers. `opts.types` is the adapter-side filter
+   * (BridgeStreamOpenPayload) — list exactly the frame kinds the handlers
+   * consume, so bulky frames (projections) never cross the pipe or IPC.
    */
   async openMux(
     handlers: {
@@ -103,8 +105,9 @@ export const dsh = {
       onOpen?: () => void
       onEnd?: (reason?: string) => void
     },
+    opts?: { types?: string[] },
   ): Promise<number> {
-    return window.dshDesktop.dsh.openStream('mux', {}, {
+    return window.dshDesktop.dsh.openStream('mux', { types: opts?.types }, {
       onFrame: (envelope) => {
         // Frames arrive wrapped as full-form ServerRequests; the mux frame
         // (the document typed by `method`) sits in the payload slot.

@@ -93,6 +93,16 @@ export const bridgeStreamOpenSchema = z.object({
 export type BridgeStreamOpen = z.infer<typeof bridgeStreamOpenSchema>
 
 /**
+ * stream-open payload (opaque to the frame schema, additive by design).
+ * `types` asks the adapter to forward only those mux/host frame types — the
+ * big `session/projection` deltas are the prime candidate to filter OUT when
+ * a consumer only renders session/event traffic.
+ */
+export interface BridgeStreamOpenPayload {
+  types?: string[]
+}
+
+/**
  * Adapter confirms the subscription is established (host-side listeners are
  * attached, baseline replay starting) — the shell's `onOpen` signal.
  */
