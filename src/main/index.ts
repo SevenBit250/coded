@@ -16,6 +16,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { IPC } from '../shared/ipc'
+import { startDshFace, stopDshFace } from './dsh-face'
 
 /** Window chrome configuration. The frosted-glass values are the ones to
  *  tune by running; everything else here is a window-construction fact. */
@@ -58,7 +59,9 @@ const CHROME: ChromeConfig = {
 }
 
 /** Whether devtools are enabled for this launch. */
-const isDev = process.argv.includes('--dev')
+const isDev =
+  process.argv.includes('--dev') ||
+  process.env['ELECTRON_RENDERER_URL'] !== undefined
 
 /** The single BrowserWindow this shell owns. */
 let mainWindow: BrowserWindow | null = null
@@ -107,6 +110,24 @@ function createWindow(): BrowserWindow {
   })
 
   win.once('ready-to-show', () => win.show())
+
+  // Lifecycle diagnostics: renderer death / window teardown decide whether
+  // the app quit path (and with it the bridge teardown) fired mid-session.
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.log(`[lifecycle] render-process-gone: ${JSON.stringify(details)}`)
+  })
+  win.once('closed', () => {
+    console.log('[lifecycle] window closed')
+  })
+
+  // Dev only: mirror the renderer console into the terminal — the bridge
+  // session logs ([dsh-client]/[dsh-session]) live in the renderer, and
+  // without this the terminal alone cannot see whether frames rendered.
+  if (isDev) {
+    win.webContents.on('console-message', (details) => {
+      console.log(`[renderer] ${details.message}`)
+    })
+  }
 
   // electron-vite: dev loads the renderer dev server; production loads the
   // built renderer bundle. Without a load call the window never paints.
@@ -160,9 +181,11 @@ function registerWindowControls(): void {
 // Single instance per data dir; a second launch focuses the existing window.
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
+  console.log('[lifecycle] second instance lost the lock; quitting')
   app.quit()
 } else {
   app.on('second-instance', () => {
+    console.log('[lifecycle] second-instance event')
     if (mainWindow !== null) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
@@ -172,13 +195,32 @@ if (!gotLock) {
   app.whenReady().then(() => {
     registerWindowControls()
     createWindow()
+    // Harness runtime + CodedBridge: spawn, readiness watch, pipe client,
+    // IPC surface. Failures land in the status broadcast, not the window.
+    startDshFace()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
   })
 
+  // Quit handshake: tear the bridge and the harness process tree down first
+  // (taskkill /T on Windows), then let the quit proceed.
+  let dshCleaned = false
+  app.on('before-quit', (event) => {
+    if (dshCleaned) return
+    console.log('[lifecycle] before-quit: stopping dsh face')
+    event.preventDefault()
+    void stopDshFace()
+      .catch(() => {})
+      .then(() => {
+        dshCleaned = true
+        app.quit()
+      })
+  })
+
   app.on('window-all-closed', () => {
+    console.log('[lifecycle] window-all-closed')
     if (process.platform !== 'darwin') app.quit()
   })
 }

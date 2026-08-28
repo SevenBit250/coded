@@ -93,8 +93,20 @@ export const bridgeStreamOpenSchema = z.object({
 export type BridgeStreamOpen = z.infer<typeof bridgeStreamOpenSchema>
 
 /**
- * One downstream frame, passed through verbatim as the ApiProxy emitted it
- * (`{ rpcId, payload }` envelope — envelope shapes belong to apiproxy).
+ * Adapter confirms the subscription is established (host-side listeners are
+ * attached, baseline replay starting) — the shell's `onOpen` signal.
+ */
+export const bridgeStreamReadySchema = z.object({
+  t: z.literal('stream-ready'),
+  id: z.number().int(),
+})
+export type BridgeStreamReady = z.infer<typeof bridgeStreamReadySchema>
+
+/**
+ * One downstream frame. `envelope` is a full-form ServerRequest document
+ * (`{ type: 'server-request', rpcId, method, payload }`) — byte-compatible
+ * with the harness WebSocket downlink carrier, so shell-side parsing code is
+ * shared with the browser client shape.
  */
 export const bridgeStreamFrameSchema = z.object({
   t: z.literal('stream-frame'),
@@ -125,6 +137,7 @@ export const bridgeFrameSchema = z.discriminatedUnion('t', [
   bridgeRpcOkSchema,
   bridgeRpcErrSchema,
   bridgeStreamOpenSchema,
+  bridgeStreamReadySchema,
   bridgeStreamFrameSchema,
   bridgeStreamEndSchema,
   bridgeStreamAbortSchema,

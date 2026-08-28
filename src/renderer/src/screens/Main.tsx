@@ -20,6 +20,8 @@ import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 import { loadSidebarView, saveSidebarView } from '../sidebar-view'
 import type { SidebarViewState } from '../sidebar-view'
+import { ChatStream } from '../dsh/ChatStream'
+import { useDshSession } from '../dsh/use-dsh-session'
 
 /** Main screen props. */
 export interface MainProps {
@@ -816,6 +818,16 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   // the first send flips this and locks the mode selector for the rest of
   // the conversation.
   const [conversationStarted, setConversationStarted] = useState(false)
+  // CodedBridge session: status, transcript, composer draft.
+  const session = useDshSession()
+  const [draft, setDraft] = useState('')
+  const submitDraft = (): void => {
+    const text = draft
+    if (text.trim() === '' || session.busy) return
+    setDraft('')
+    setConversationStarted(true)
+    session.send(text)
+  }
   // Access preset: defaults to harness' default pairing (sandbox
   // workspace-write + approval ask).
   const [accessMode, setAccessMode] = useState<string | null>('workspace-write')
@@ -1029,15 +1041,16 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           className="content-col"
           style={{ left: sidebarOpen ? sidebarWidth + SIDEBAR_GAP : 0 }}
         >
-          <main className="content">
+          <main className={`content${session.messages.length > 0 ? ' in-session' : ''}`}>
           <div className="watermark" aria-hidden="true">
             C
           </div>
+          {session.messages.length > 0 && <ChatStream messages={session.messages} />}
 
           {/* Centered in the conversation area: the composer anchors the
               center; the greeting rides a fixed 26px above the card. */}
           <div className="composer-anchor">
-            <h1 className="greeting">{greeting()}</h1>
+            {session.messages.length === 0 && <h1 className="greeting">{greeting()}</h1>}
 
           <div className="composer">
             <div className="composer-head">
@@ -1066,8 +1079,16 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
             <textarea
               className="composer-input"
               rows={3}
+              value={draft}
               placeholder="向 Coded 提问，使用 @ 添加上下文，使用 / 选择命令或能力"
               aria-label="向 Coded 提问"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing && !event.shiftKey) {
+                  event.preventDefault()
+                  submitDraft()
+                }
+              }}
             />
             <div className="composer-foot">
               <div className="composer-left">
@@ -1210,7 +1231,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     // harness pins the agent preset at session creation, so
                     // the mode selector locks from this moment (placeholder
                     // for the transport-level session event).
-                    setConversationStarted(true)
+                    submitDraft()
                   }}
                 >
                   {/* lucide:arrow-up */}

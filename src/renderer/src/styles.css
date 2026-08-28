@@ -680,7 +680,83 @@ html[data-platform='win32'] .anchor-bar {
   color: var(--text-faint);
 }
 
+
+/* ---- CodedBridge chat (S1): minimal transcript over the composer. ---- */
+
+.content.in-session {
+  align-items: stretch;
+  padding-bottom: 24px;
+}
+
+.chat-stream {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 6px;
+  width: min(660px, 92%);
+  margin: 0 auto;
+}
+
+.content.in-session .composer-anchor {
+  position: static;
+  transform: none;
+  width: min(660px, 92%);
+  margin: 0 auto;
+  flex: none;
+}
+
+.chat-row {
+  display: flex;
+}
+
+.chat-row--user {
+  justify-content: flex-end;
+}
+
+.chat-row--assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-bubble--user {
+  background: var(--accent, #e8734a);
+  color: #ffffff;
+  border-bottom-right-radius: 5px;
+}
+
+.chat-bubble--assistant {
+  background: rgba(var(--ink-rgb), 0.06);
+  color: var(--text, #26272d);
+  border-bottom-left-radius: 5px;
+}
+
+.chat-bubble--streaming::after {
+  content: '▍';
+  opacity: 0.5;
+  animation: chat-cursor 0.9s steps(1) infinite;
+}
+
+@keyframes chat-cursor {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* ---- Dialog content: rename (workspace/session) + delete confirm. ---- */
+
+.chat-error { color: var(--danger, #e34d59); font-size: 12px; }
 
 .dlg {
   display: flex;

@@ -16,6 +16,25 @@ export const IPC = {
     ready: 'shell:ready',
     transition: 'shell:transition',
   },
+  /** CodedBridge face: renderer ↔ main ↔ harness adapter (via local pipe). */
+  dsh: {
+    /** invoke(method, payload) → harness ApiProxy unary response (full form). */
+    invoke: 'dsh:invoke',
+    /** invoke(name, payload) → stream id; frames arrive on `frame`. */
+    streamOpen: 'dsh:stream-open',
+    /** send(streamId): shell-side cancellation of an open stream. */
+    streamAbort: 'dsh:stream-abort',
+    /** event {id, envelope}: one downstream frame (ServerRequest full form). */
+    frame: 'dsh:frame',
+    /** event {id}: the adapter confirmed the stream is established. */
+    streamReady: 'dsh:stream-ready',
+    /** event {id, reason?}: the stream finished on the adapter side. */
+    streamEnd: 'dsh:stream-end',
+    /** invoke() → current lifecycle status (initial read; changes push). */
+    statusGet: 'dsh:status-get',
+    /** event {status}: runtime/bridge lifecycle broadcast. */
+    status: 'dsh:status',
+  },
 } as const
 
 /** Any window-control channel name. */
