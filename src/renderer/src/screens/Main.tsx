@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown, MetaButton, ScrollArea } from '@uibase'
+import { Icon, IconButton, Split, Tooltip, WindowControls, Dropdown, MetaButton, ScrollArea, Spinner } from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 
@@ -40,6 +40,21 @@ const SIDEBAR_DEFAULT = 240
 const SIDEBAR_MIN = 240
 const SIDEBAR_MAX = 480
 const SIDEBAR_GAP = 3
+
+/** localStorage key holding the collapsed workspace ids (JSON array).
+ *  Same `dsh-` prefix convention as the theme key. */
+const COLLAPSED_KEY = 'dsh-collapsed-workspaces'
+
+/** Read the collapsed-workspace set; a corrupt or absent entry means "all
+ *  expanded" (the default). */
+function loadCollapsed(): ReadonlySet<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_KEY)
+    return raw !== null ? new Set(JSON.parse(raw) as string[]) : new Set()
+  } catch {
+    return new Set()
+  }
+}
 
 interface MenuIconProps {
   name: MenuIconName
@@ -157,6 +172,12 @@ function relTime(minutesAgo: number): string {
   return `${Math.round(days)}天`
 }
 
+/** Session lifecycle shown in the sidebar (harness projection semantics,
+ *  ZCode-style markers): running spins, approval-blocked shows the tail tag,
+ *  settled rows keep a quiet dot — green for a clean finish, red for an
+ *  abnormal end (network drop, crash). Idle rows carry no marker. */
+type SessionStatus = 'idle' | 'running' | 'needs-confirm' | 'completed' | 'interrupted'
+
 interface SessionStub {
   /** Session id. */
   id: string
@@ -164,11 +185,8 @@ interface SessionStub {
   title: string
   /** Relative recency bucket (minutes) — drives the compact right-side time. */
   updatedMinutesAgo: number
-  /** harness status flags (drive the left-side dot in P3). */
-  pendingInteraction?: 'approval' | 'plan-review' | 'question'
-  running?: boolean
-  runningSubagentCount?: number
-  completed?: boolean
+  /** Lifecycle state driving the row's lead/tail markers. */
+  status: SessionStatus
 }
 
 interface WorkspaceStub {
@@ -187,9 +205,14 @@ const WORKSPACES: readonly WorkspaceStub[] = [
     title: 'dsh',
     path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh',
     sessions: [
-      { id: 's1', title: '拉取并研究 deepseek-harness', updatedMinutesAgo: 5760, completed: true },
-      { id: 's2', title: '调研 Electron 嵌入方案', updatedMinutesAgo: 4320 },
-      { id: 's3', title: '跑通 web 端最小闭环', updatedMinutesAgo: 2880 },
+      {
+        id: 's1',
+        title: '拉取并研究 deepseek-harness',
+        updatedMinutesAgo: 5760,
+        status: 'completed',
+      },
+      { id: 's2', title: '调研 Electron 嵌入方案', updatedMinutesAgo: 4320, status: 'interrupted' },
+      { id: 's3', title: '跑通 web 端最小闭环', updatedMinutesAgo: 2880, status: 'idle' },
     ],
   },
   {
@@ -197,9 +220,9 @@ const WORKSPACES: readonly WorkspaceStub[] = [
     title: 'dsh-desktop',
     path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh\\dsh-desktop',
     sessions: [
-      { id: 's4', title: '侧栏工作区布局对齐', updatedMinutesAgo: 35, running: true },
-      { id: 's5', title: '底栏按钮体系统一', updatedMinutesAgo: 120, completed: true },
-      { id: 's6', title: 'Dropdown 十二向与快捷键', updatedMinutesAgo: 1440 },
+      { id: 's4', title: '侧栏工作区布局对齐', updatedMinutesAgo: 35, status: 'running' },
+      { id: 's5', title: '底栏按钮体系统一', updatedMinutesAgo: 120, status: 'needs-confirm' },
+      { id: 's6', title: 'Dropdown 十二向与快捷键', updatedMinutesAgo: 1440, status: 'completed' },
     ],
   },
   {
@@ -207,7 +230,7 @@ const WORKSPACES: readonly WorkspaceStub[] = [
     title: 'docs',
     path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh\\docs',
     sessions: [
-      { id: 's7', title: 'Electron 嵌入方案评估', updatedMinutesAgo: 4320 },
+      { id: 's7', title: 'Electron 嵌入方案评估', updatedMinutesAgo: 4320, status: 'idle' },
     ],
   },
   {
@@ -442,6 +465,21 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  // Workspace groups start expanded; collapsing persists across restarts.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(loadCollapsed)
+  const toggleWorkspace = (id: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]))
+      } catch {
+        // Persistence is best-effort; the UI state is already correct.
+      }
+      return next
+    })
+  }
   const [workMode, setWorkMode] = useState<string | null>('standard')
   // Harness parity: the agent preset is pinned when the session starts, so
   // the first send flips this and locks the mode selector for the rest of
@@ -528,29 +566,64 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           </div>
 
           <ScrollArea className="projects" label="工作区与会话" outside={6}>
-            {WORKSPACES.map((workspace) => (
-              <div key={workspace.id} className="workspace-group">
-                <button
-                  className={`project ${selectedProject === workspace.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedProject(workspace.id)}
+            {WORKSPACES.map((workspace) => {
+              const isCollapsed = collapsed.has(workspace.id)
+              return (
+                <div
+                  key={workspace.id}
+                  className={`workspace-group${isCollapsed ? ' collapsed' : ''}`}
                 >
-                  <span className="project-name">
-                    <svg className="folder" viewBox="0 0 16 16">
-                      <path d="M2.5 4h4l1.3 1.5h5.7v6H2.5z" />
-                    </svg>
-                    {workspace.title}
-                  </span>
-                </button>
-                <div className="workspace-sessions">
-                  {workspace.sessions.map((s) => (
-                    <button key={s.id} className="session-row">
-                      <span className="session-title">{s.title}</span>
-                      <span className="session-time">{relTime(s.updatedMinutesAgo)}</span>
-                    </button>
-                  ))}
+                  {/* Header row: clicking toggles the group only — the row
+                      never takes a selected tint (selection lives in the
+                      composer's workspace picker); the folder icon carries
+                      the state (open = expanded, closed = collapsed). */}
+                  <button
+                    className="project"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleWorkspace(workspace.id)}
+                  >
+                    <span className="project-name">
+                      <Icon className="folder" viewBox="0 0 24 24" strokeWidth={1.8}>
+                        {isCollapsed ? (
+                          /* lucide:folder */
+                          <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                        ) : (
+                          /* lucide:folder-open */
+                          <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+                        )}
+                      </Icon>
+                      {workspace.title}
+                    </span>
+                  </button>
+                  {/* Grid-rows collapse: 1fr -> 0fr animates the group shut
+                      without measuring heights. */}
+                  <div className="workspace-sessions-wrap">
+                    <div className="workspace-sessions">
+                      {workspace.sessions.map((s) => (
+                        <button key={s.id} className="session-row">
+                          <span className="session-lead" aria-hidden="true">
+                            {s.status === 'running' && (
+                              <Spinner size={12} className="session-spinner" />
+                            )}
+                            {s.status === 'completed' && (
+                              <span className="session-dot session-dot--done" />
+                            )}
+                            {s.status === 'interrupted' && (
+                              <span className="session-dot session-dot--stopped" />
+                            )}
+                          </span>
+                          <span className="session-title">{s.title}</span>
+                          {s.status === 'needs-confirm' && (
+                            <span className="session-flag">需要确认</span>
+                          )}
+                          <span className="session-time">{relTime(s.updatedMinutesAgo)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </ScrollArea>
 
           <div className="side-gap" />

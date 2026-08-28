@@ -387,6 +387,9 @@ html[data-platform='win32'] .anchor-bar {
   display: flex;
   align-items: center;
   gap: 9px;
+  /* 8px + 18px line + 8px = the shared 34px row rhythm; the workspace and
+     session rows below match it exactly. */
+  line-height: 18px;
   padding: 8px 9px;
   border: 0;
   border-radius: 9px;
@@ -467,20 +470,36 @@ html[data-platform='win32'] .anchor-bar {
   flex-direction: column;
 }
 
+/* Collapse shell: 1fr -> 0fr animates the group shut without measuring
+   heights; the inner column clips while the row collapses. */
+.workspace-sessions-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.workspace-group.collapsed .workspace-sessions-wrap {
+  grid-template-rows: 0fr;
+}
+
 .workspace-sessions {
   display: flex;
   flex-direction: column;
-  padding-left: 26px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .session-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  /* Match the workspace row's right inset so the thumb lane never overlaps
-     the time column. */
-  padding: 6px 12px 6px 9px;
+  gap: 8px;
+  /* The hover block spans the full row width (same insets as the workspace
+     row); the 16px tree indent rides in the left padding, so the text stays
+     indented under its parent while the highlight reads full-bleed.
+     Height matches .menu-item / .project: 8 + 18 + 8. */
+  line-height: 18px;
+  padding: 8px 12px 8px 25px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -494,6 +513,53 @@ html[data-platform='win32'] .anchor-bar {
 .session-row:hover {
   background: rgba(var(--ink-rgb), 0.05);
   color: var(--text);
+}
+
+/* Fixed-width lead slot ahead of the title: running rows spin here,
+   settled rows keep a quiet dot, idle rows leave it empty — either way
+   every title starts on the same x. */
+.session-lead {
+  width: 12px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.session-spinner {
+  color: var(--text, #26272d);
+}
+
+/* Settled-state dot: green = finished clean, red = ended abnormally
+   (network drop, crash). Approval-blocked rows show the tail tag instead;
+   running spins; idle rows are unmarked. */
+.session-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.session-dot--done {
+  background: var(--success, #43a26b);
+}
+
+.session-dot--stopped {
+  background: var(--danger, #e34d59);
+}
+
+/* Approval-blocked tag pinned to the row's tail. The amber chip is
+   self-contained (amber fill + deep-brown text), so it stays readable on
+   both palettes without per-theme colors. */
+.session-flag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #3d2a08;
+  background: #e8b96a;
 }
 
 .session-title {
@@ -512,11 +578,13 @@ html[data-platform='win32'] .anchor-bar {
 
 .project {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  /* Right side keeps clear of the ScrollArea thumb lane (6px strip at the
-     panel's right edge) so a hovered row never reads as clipped by it. */
-  padding: 7px 12px 7px 9px;
+  align-items: center;
+  gap: 8px;
+  /* Same 34px row as .menu-item (8 + 18 + 8). Right side keeps clear of the
+     ScrollArea thumb lane (6px strip at the panel's right edge) so a hovered
+     row never reads as clipped by it. */
+  line-height: 18px;
+  padding: 8px 12px 8px 9px;
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -530,14 +598,6 @@ html[data-platform='win32'] .anchor-bar {
   background: rgba(var(--ink-rgb), 0.05);
 }
 
-.project.selected {
-  background: rgba(var(--ink-rgb), 0.07);
-}
-
-.project.selected .project-name {
-  font-weight: 650;
-}
-
 .project-name {
   display: flex;
   align-items: center;
@@ -547,14 +607,13 @@ html[data-platform='win32'] .anchor-bar {
   color: var(--text);
 }
 
+/* Folder carries the group state: open folder = expanded, closed =
+   collapsed (Icon renders currentColor stroke, so color is the hook). */
 .project-name .folder {
   width: 14px;
   height: 14px;
   flex: none;
-  stroke: var(--text-dim);
-  stroke-width: 1.2;
-  fill: none;
-  stroke-linejoin: round;
+  color: var(--text-dim);
 }
 
 .project-meta {
