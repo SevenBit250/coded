@@ -30,6 +30,53 @@ export interface TextChunk {
   text?: string
 }
 
+/** approval/requested mux frame (payload slot; the answerable id rides the
+ *  envelope's rpcId, handed to handlers alongside). */
+export interface ApprovalRequestedFrame {
+  type: 'approval/requested'
+  sessionId: string
+  approvalId: string
+  toolName: string
+  callId?: string
+  reason?: string
+}
+
+export interface ApprovalResolvedFrame {
+  type: 'approval/resolved'
+  sessionId: string
+  approvalId: string
+  outcome: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+}
+
+/** AskUserQuestionItem (dsh-user-questions) as it crosses the wire. */
+export interface QuestionItem {
+  id: string
+  question: string
+  header?: string
+  detail?: string
+  options?: { label: string; description?: string }[]
+  multiSelect?: boolean
+  intent?: { kind: 'plan-review'; approve: string }
+}
+
+export interface QuestionRequestedFrame {
+  type: 'question/requested'
+  sessionId: string
+  questions: QuestionItem[]
+}
+
+export interface QuestionResolvedFrame {
+  type: 'question/resolved'
+  sessionId: string
+  questionRpcId: string
+  outcome: 'answered' | 'cancelled'
+}
+
+/** rpcResult slot of a respond call: answer value, or the cancel shape. */
+export type RespondResult =
+  | { ok: true; value: unknown }
+  | { ok: false; error: { code: string; message: string } }
+
 /** Unwrap a full-form ServerResponse: value on ok, throw on business error. */
 function unwrap(serverResponse: unknown): unknown {
   const sr = serverResponse as {
@@ -93,15 +140,34 @@ export const dsh = {
   },
 
   /**
-   * Subscribe to the mux downstream stream. `onEvent` receives only
-   * session/event frames; other frame types (approvals, projections) arrive
-   * later through dedicated helpers. `opts.types` is the adapter-side filter
-   * (BridgeStreamOpenPayload) — list exactly the frame kinds the handlers
-   * consume, so bulky frames (projections) never cross the pipe or IPC.
+   * Answer an answerable frame (approval/question). `rpcId` is the stable id
+   * from the frame's envelope; `result` is the rpcResult verbatim. Resolves
+   * with the carrier's receipt — check `accepted` (a late/duplicate answer is
+   * refused, not an error). NOTE: /api/respond answers with the bare
+   * RpcReceipt — no server-response envelope — so this bypasses `call`'s
+   * unwrap on purpose.
+   */
+  async respond(rpcId: string, result: RespondResult): Promise<{ accepted: boolean; reason?: string }> {
+    const receipt = (await window.dshDesktop.dsh.invoke('respond', { rpcId, result })) as {
+      accepted: boolean
+      reason?: string
+    }
+    return receipt
+  },
+
+  /**
+   * Subscribe to the mux downstream stream. `onEvent` receives session/event
+   * frames; answerable frames (approvals, questions) route to their own
+   * handlers with the envelope's rpcId — the stable id a `respond` call
+   * echoes. `opts.types` is the adapter-side filter (BridgeStreamOpenPayload)
+   * — list exactly the frame kinds the handlers consume, so bulky frames
+   * (projections) never cross the pipe or IPC.
    */
   async openMux(
     handlers: {
       onEvent: (frame: SessionEventFrame) => void
+      onApproval?: (frame: ApprovalRequestedFrame | ApprovalResolvedFrame, rpcId: string) => void
+      onQuestion?: (frame: QuestionRequestedFrame | QuestionResolvedFrame, rpcId: string) => void
       onOpen?: () => void
       onEnd?: (reason?: string) => void
     },
@@ -111,12 +177,27 @@ export const dsh = {
       onFrame: (envelope) => {
         // Frames arrive wrapped as full-form ServerRequests; the mux frame
         // (the document typed by `method`) sits in the payload slot.
-        const e = envelope as { type?: string; payload?: unknown }
+        const e = envelope as { type?: string; rpcId?: string; payload?: unknown }
         if (e?.type !== 'server-request') return
         const frame = e.payload as { type?: string } | undefined
-        if (frame?.type === 'session/event') handlers.onEvent(frame as unknown as SessionEventFrame)
-        // Other mux frame kinds (projections, approvals, queue views) get
-        // dedicated helpers when a surface needs them.
+        const rpcId = typeof e.rpcId === 'string' ? e.rpcId : ''
+        switch (frame?.type) {
+          case 'session/event':
+            handlers.onEvent(frame as unknown as SessionEventFrame)
+            return
+          case 'approval/requested':
+          case 'approval/resolved':
+            handlers.onApproval?.(frame as unknown as ApprovalRequestedFrame, rpcId)
+            return
+          case 'question/requested':
+          case 'question/resolved':
+            handlers.onQuestion?.(frame as unknown as QuestionRequestedFrame, rpcId)
+            return
+          default:
+            // Other mux frame kinds (projections, queue views, jobs) get
+            // dedicated helpers when a surface needs them.
+            return
+        }
       },
       onOpen: () => {
         handlers.onOpen?.()

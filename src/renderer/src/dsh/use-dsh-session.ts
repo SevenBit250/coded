@@ -11,7 +11,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { dsh } from './client'
-import type { DshStatus, SessionEventFrame, TextChunk } from './client'
+import type {
+  ApprovalRequestedFrame,
+  ApprovalResolvedFrame,
+  DshStatus,
+  QuestionItem,
+  QuestionRequestedFrame,
+  QuestionResolvedFrame,
+  SessionEventFrame,
+  TextChunk,
+} from './client'
 
 export interface ChatMessage {
   id: string
@@ -21,6 +30,31 @@ export interface ChatMessage {
   streaming?: boolean
   /** Set when the send failed before/while dispatching. */
   error?: string
+}
+
+/** A pending tool-call approval (answerable via its stable envelope rpcId). */
+export interface PendingApproval {
+  rpcId: string
+  sessionId: string
+  approvalId: string
+  toolName: string
+  reason?: string
+  /** Best-effort summary of the correlated tool/call arguments. */
+  argsSummary?: string
+}
+
+/** A pending user-question batch (answerable via its stable envelope rpcId). */
+export interface PendingQuestion {
+  rpcId: string
+  sessionId: string
+  questions: QuestionItem[]
+}
+
+/** One answer inside a question batch response. */
+export interface QuestionAnswerItem {
+  id: string
+  selected: string[]
+  custom?: string
 }
 
 let idCounter = 0
@@ -48,15 +82,47 @@ export interface DshSession {
   /** True while a send is in flight (composer locks). */
   busy: boolean
   send: (text: string) => void
+  /** Answerable frames awaiting the user (active session only). */
+  pendingApprovals: PendingApproval[]
+  pendingQuestions: PendingQuestion[]
+  answerApproval: (pending: PendingApproval, outcome: 'allowed-once' | 'rejected') => void
+  answerQuestion: (pending: PendingQuestion, answers: QuestionAnswerItem[]) => void
+  cancelQuestion: (pending: PendingQuestion) => void
+}
+
+/** The mux frame kinds this hook consumes (adapter-side filter list). */
+const MUX_TYPES = [
+  'session/event',
+  'approval/requested',
+  'approval/resolved',
+  'question/requested',
+  'question/resolved',
+]
+
+/** Compact one-line summary of a tool call's arguments (card display). */
+function summarizeArgs(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw === '') return undefined
+  try {
+    const args = JSON.parse(raw) as Record<string, unknown>
+    // bash/pwsh-style calls: the command IS the summary.
+    if (typeof args['command'] === 'string') return args['command']
+    return raw.length > 160 ? `${raw.slice(0, 160)}…` : raw
+  } catch {
+    return raw.length > 160 ? `${raw.slice(0, 160)}…` : raw
+  }
 }
 
 export function useDshSession(): DshSession {
   const [status, setStatus] = useState<DshStatus>('starting')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
+  const [pendingQuestions, setPendingQuestions] = useState<PendingQuestion[]>([])
   const sessionIdRef = useRef<string | null>(null)
   /** Subscribed at most once per bridge-connected epoch. */
   const subscribedRef = useRef(false)
+  /** callId → args summary, for the approval card's arguments line. */
+  const toolCallsRef = useRef(new Map<string, string>())
 
   useEffect(() => {
     let cancelled = false
@@ -72,6 +138,12 @@ export function useDshSession(): DshSession {
           {
             onEvent: (frame) => {
               handleSessionEvent(frame)
+            },
+            onApproval: (frame, rpcId) => {
+              handleApproval(frame, rpcId)
+            },
+            onQuestion: (frame, rpcId) => {
+              handleQuestion(frame, rpcId)
             },
             onEnd: (reason) => {
               console.log(`[dsh-session] mux ended: ${reason ?? 'closed'}`)
@@ -89,9 +161,9 @@ export function useDshSession(): DshSession {
               }
             },
           },
-          // Only chat traffic crosses the pipe — bulky projections stay
-          // host-side (adapter-side filter, see BridgeStreamOpenPayload).
-          { types: ['session/event'] },
+          // Only chat + answerable traffic crosses the pipe — bulky
+          // projections stay host-side (adapter-side filter).
+          { types: MUX_TYPES },
         )
         .catch((error) => {
           console.log(`[dsh-session] mux open failed: ${String(error)}`)
@@ -162,11 +234,128 @@ export function useDshSession(): DshSession {
           finalizeAssistant(assistantText(data))
           return
         }
+        case 'tool/call': {
+          // Remember the arguments so an approval card can show what it is
+          // approving (approval/requested itself carries no arguments).
+          const call = event.data as { callId?: unknown; arguments?: unknown } | undefined
+          if (typeof call?.callId === 'string') {
+            const summary = summarizeArgs(call.arguments)
+            if (summary !== undefined) toolCallsRef.current.set(call.callId, summary)
+          }
+          return
+        }
         default:
           return
       }
     },
     [appendAssistantDelta, finalizeAssistant],
+  )
+
+  /** Answerable approval frames: requested adds, resolved removes. */
+  const handleApproval = useCallback(
+    (frame: ApprovalRequestedFrame | ApprovalResolvedFrame, rpcId: string): void => {
+      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
+      if (frame.type === 'approval/requested') {
+        setPendingApprovals((prev) => {
+          if (prev.some((p) => p.approvalId === frame.approvalId)) return prev
+          return [
+            ...prev,
+            {
+              rpcId,
+              sessionId: frame.sessionId,
+              approvalId: frame.approvalId,
+              toolName: frame.toolName,
+              ...(frame.reason !== undefined ? { reason: frame.reason } : {}),
+              ...(frame.callId !== undefined
+                ? { argsSummary: toolCallsRef.current.get(frame.callId) }
+                : {}),
+            },
+          ]
+        })
+        return
+      }
+      // approval/resolved
+      setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== frame.approvalId))
+    },
+    [],
+  )
+
+  /** Answerable question frames: requested adds, resolved removes by rpcId. */
+  const handleQuestion = useCallback(
+    (frame: QuestionRequestedFrame | QuestionResolvedFrame, rpcId: string): void => {
+      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
+      if (frame.type === 'question/requested') {
+        setPendingQuestions((prev) => {
+          if (prev.some((p) => p.rpcId === rpcId)) return prev
+          return [...prev, { rpcId, sessionId: frame.sessionId, questions: frame.questions }]
+        })
+        return
+      }
+      // question/resolved keys by the request's rpcId.
+      setPendingQuestions((prev) => prev.filter((p) => p.rpcId !== frame.questionRpcId))
+    },
+    [],
+  )
+
+  /** Respond helpers: optimistic removal, the resolved frame confirms. */
+  const answerApproval = useCallback(
+    (pending: PendingApproval, outcome: 'allowed-once' | 'rejected'): void => {
+      setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== pending.approvalId))
+      void dsh
+        .respond(pending.rpcId, {
+          ok: true,
+          value: { sessionId: pending.sessionId, approvalId: pending.approvalId, outcome },
+        })
+        .then((receipt) => {
+          if (!receipt.accepted) {
+            console.log(`[dsh-session] approval respond refused: ${receipt.reason ?? 'unknown'}`)
+          }
+        })
+        .catch((error: unknown) => {
+          console.log(`[dsh-session] approval respond failed: ${String(error)}`)
+        })
+    },
+    [],
+  )
+
+  const answerQuestion = useCallback(
+    (pending: PendingQuestion, answers: QuestionAnswerItem[]): void => {
+      setPendingQuestions((prev) => prev.filter((p) => p.rpcId !== pending.rpcId))
+      void dsh
+        .respond(pending.rpcId, {
+          ok: true,
+          value: { sessionId: pending.sessionId, answer: { answers } },
+        })
+        .then((receipt) => {
+          if (!receipt.accepted) {
+            console.log(`[dsh-session] question respond refused: ${receipt.reason ?? 'unknown'}`)
+          }
+        })
+        .catch((error: unknown) => {
+          console.log(`[dsh-session] question respond failed: ${String(error)}`)
+        })
+    },
+    [],
+  )
+
+  const cancelQuestion = useCallback(
+    (pending: PendingQuestion): void => {
+      setPendingQuestions((prev) => prev.filter((p) => p.rpcId !== pending.rpcId))
+      void dsh
+        .respond(pending.rpcId, {
+          ok: false,
+          error: { code: 'cancelled', message: 'the user cancelled' },
+        })
+        .then((receipt) => {
+          if (!receipt.accepted) {
+            console.log(`[dsh-session] question cancel refused: ${receipt.reason ?? 'unknown'}`)
+          }
+        })
+        .catch((error: unknown) => {
+          console.log(`[dsh-session] question cancel failed: ${String(error)}`)
+        })
+    },
+    [],
   )
 
   const send = useCallback(
@@ -208,7 +397,17 @@ export function useDshSession(): DshSession {
     [busy],
   )
 
-  return { status, messages, busy, send }
+  return {
+    status,
+    messages,
+    busy,
+    send,
+    pendingApprovals,
+    pendingQuestions,
+    answerApproval,
+    answerQuestion,
+    cancelQuestion,
+  }
 }
 
 /** Convenience for components that only want the element. */

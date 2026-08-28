@@ -21,6 +21,7 @@ import type { ThemeName } from '../theme'
 import { loadSidebarView, saveSidebarView } from '../sidebar-view'
 import type { SidebarViewState } from '../sidebar-view'
 import { ChatStream } from '../dsh/ChatStream'
+import { ApprovalCard, QuestionCard } from '../dsh/gates'
 import { useDshSession } from '../dsh/use-dsh-session'
 
 /** Main screen props. */
@@ -1045,7 +1046,28 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           <div className="watermark" aria-hidden="true">
             C
           </div>
-          {session.messages.length > 0 && <ChatStream messages={session.messages} />}
+          {session.messages.length > 0 && (
+            <ChatStream
+              messages={session.messages}
+              trailTick={session.pendingApprovals.length + session.pendingQuestions.length}
+            >
+              {session.pendingApprovals.map((pending) => (
+                <ApprovalCard
+                  key={pending.approvalId}
+                  pending={pending}
+                  onAnswer={(outcome) => session.answerApproval(pending, outcome)}
+                />
+              ))}
+              {session.pendingQuestions.map((pending) => (
+                <QuestionCard
+                  key={pending.rpcId}
+                  pending={pending}
+                  onSubmit={(answers) => session.answerQuestion(pending, answers)}
+                  onCancel={() => session.cancelQuestion(pending)}
+                />
+              ))}
+            </ChatStream>
+          )}
 
           {/* Centered in the conversation area: the composer anchors the
               center; the greeting rides a fixed 26px above the card. */}
