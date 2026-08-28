@@ -6,6 +6,9 @@
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
