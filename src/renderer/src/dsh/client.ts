@@ -77,6 +77,47 @@ export type RespondResult =
   | { ok: true; value: unknown }
   | { ok: false; error: { code: string; message: string } }
 
+/** ---- Directory domain (S2.1): sessions/workspaces listing + host stream. ---- */
+
+/** session.list row. Titles ride the projection baseline, not a field. */
+export interface SessionSummary {
+  sessionId: string
+  /** Epoch ms of creation/latest human prompt. */
+  updatedAt: number
+  /** Live agent attached and mid-turn. */
+  running: boolean
+  /** No turn yet — list surfaces hide these (and reuse them for New Session). */
+  blank: boolean
+  cwd?: string
+  agentPreset?: string
+  projections?: { values: Record<string, unknown>; asOfSeq: number }
+}
+
+export interface WorkspaceView {
+  workspaceId: string
+  path: string
+  title: string
+  sessionIds: string[]
+}
+
+/** session.history response page. */
+export interface SessionHistory {
+  events: { event: { type: string; data?: unknown } }[]
+  hasMore: boolean
+}
+
+/** Host-stream frames (the host-side counterpart of the mux stream). A closed
+ *  union on purpose: unknown frame kinds land in the consumers' default case. */
+export type HostFrame =
+  | { type: 'host/session-added'; sessionId: string; blank: boolean; cwd?: string }
+  | { type: 'host/session-removed'; sessionId: string }
+  | { type: 'host/session-status'; sessionId: string; running: boolean }
+  | { type: 'host/agent-error'; sessionId: string; message: string }
+  | { type: 'host/workspace-changed'; workspace: WorkspaceView }
+  | { type: 'host/workspace-removed'; workspaceId: string }
+  | { type: 'host/workspace-order-changed'; workspaceIds: string[] }
+  | { type: 'host/archived-sessions-changed'; archivedSessionIds: string[] }
+
 /** Unwrap a full-form ServerResponse: value on ok, throw on business error. */
 function unwrap(serverResponse: unknown): unknown {
   const sr = serverResponse as {
@@ -124,9 +165,50 @@ export const dsh = {
     return home
   },
 
-  /** Create a session rooted at `cwd`; returns the session id. */
-  async createSession(cwd: string): Promise<string> {
-    const value = (await dsh.call('session.create', { cwd })) as { sessionId: string }
+  /** Full workspace roster + the archived-session set. */
+  async listWorkspaces(): Promise<{ items: WorkspaceView[]; archivedSessionIds: string[] }> {
+    return (await dsh.call('workspace.list', {})) as {
+      items: WorkspaceView[]
+      archivedSessionIds: string[]
+    }
+  },
+
+  /** Every persisted session, updatedAt descending. */
+  async listSessions(): Promise<SessionSummary[]> {
+    const value = (await dsh.call('session.list', {})) as { items: SessionSummary[] }
+    return value.items
+  },
+
+  /** Tail page of a session's event log (transcript rebuild source). */
+  async sessionHistory(sessionId: string): Promise<SessionHistory> {
+    return (await dsh.call('session.history', { sessionId })) as SessionHistory
+  },
+
+  async renameSession(sessionId: string, title: string): Promise<void> {
+    await dsh.call('session.rename', { sessionId, title })
+  },
+
+  /** Fork a session; resolves with the new session's id. */
+  async forkSession(sessionId: string): Promise<string | null> {
+    const value = (await dsh.call('session.fork', { sessionId })) as { sessionId?: string }
+    return value.sessionId ?? null
+  },
+
+  async archiveSession(sessionId: string): Promise<void> {
+    await dsh.call('workspace.archiveSession', { sessionId })
+  },
+
+  async renameWorkspace(workspaceId: string, title: string): Promise<void> {
+    await dsh.call('workspace.rename', { workspaceId, title })
+  },
+
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    await dsh.call('workspace.delete', { workspaceId })
+  },
+
+  /** Create a session; roots at a workspace when given, else at cwd. */
+  async createSession(opts: { workspaceId?: string; cwd?: string }): Promise<string> {
+    const value = (await dsh.call('session.create', opts)) as { sessionId: string }
     return value.sessionId
   },
 
@@ -198,6 +280,34 @@ export const dsh = {
             // dedicated helpers when a surface needs them.
             return
         }
+      },
+      onOpen: () => {
+        handlers.onOpen?.()
+      },
+      onEnd: (reason) => {
+        handlers.onEnd?.(reason)
+      },
+    })
+  },
+
+  /**
+   * Subscribe to the host downstream stream (workspace/session roster
+   * changes). Same ServerRequest wrapping as the mux stream.
+   */
+  async openHost(
+    handlers: {
+      onFrame: (frame: HostFrame) => void
+      onOpen?: () => void
+      onEnd?: (reason?: string) => void
+    },
+    opts?: { types?: string[] },
+  ): Promise<number> {
+    return window.dshDesktop.dsh.openStream('host', { types: opts?.types }, {
+      onFrame: (envelope) => {
+        const e = envelope as { type?: string; payload?: unknown }
+        if (e?.type !== 'server-request') return
+        const frame = e.payload as HostFrame | undefined
+        if (frame !== undefined && typeof frame.type === 'string') handlers.onFrame(frame)
       },
       onOpen: () => {
         handlers.onOpen?.()

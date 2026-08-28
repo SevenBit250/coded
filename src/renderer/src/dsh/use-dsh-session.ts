@@ -1,12 +1,18 @@
 /**
  * useDshSession — the renderer's session state machine over the CodedBridge:
- * lifecycle status, one active session, and the chat transcript.
+ * lifecycle status, the ACTIVE session (switched from the sidebar), and the
+ * chat transcript.
  *
  * Event mapping (mux stream): `assistant/chunk` text deltas append to the
  * streaming assistant message; `assistant/message` finalizes it (the
  * assembled text wins over the delta accumulation, in case a chunk was
  * dropped); user messages render locally on send and are not re-rendered
- * from the echo.
+ * from the echo. Answerable frames (approvals/questions) live in pending
+ * lists keyed by their stable rpcId, replayed by the host on resubscribe.
+ *
+ * Switching: `sessionId` arrives as a prop (sidebar selection); null means
+ * "fresh draft" — the first send creates the session and reports it through
+ * `onSessionCreated` so the sidebar can select it.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
@@ -63,10 +69,9 @@ function nextId(): string {
   return `m${idCounter}`
 }
 
-/** Extract the plain text out of an assembled AssistantMessage (defensive —
- *  the content block shape belongs to dsh-llm). */
-function assistantText(message: unknown): string {
-  const content = (message as { content?: unknown })?.content
+/** Extract the plain text out of an assembled message's content blocks
+ *  (defensive — the content block shape belongs to dsh-llm). */
+function contentText(content: unknown): string {
   if (!Array.isArray(content)) return ''
   return content
     .map((block) => {
@@ -76,13 +81,33 @@ function assistantText(message: unknown): string {
     .join('')
 }
 
+/**
+ * Read the text of a message SessionEvent's data slot. The event carries the
+ * message in the `message` slot (live mux and history API agree); the
+ * bare-`content` fallback covers the raw journal shape.
+ */
+function messageEventText(data: unknown): string {
+  const d = data as { message?: { content?: unknown }; content?: unknown } | undefined
+  return contentText(d?.message?.content ?? d?.content)
+}
+
+/** True for a genuine human-authored user/message — injected context
+ *  (agent-instructions, system-prompt plugin snapshots) also rides
+ *  user/message but with a non-user source kind. */
+function isHumanUserMessage(data: unknown): boolean {
+  const source = (data as { source?: { kind?: unknown } } | undefined)?.source
+  return source?.kind === 'user'
+}
+
 export interface DshSession {
   status: DshStatus
   messages: ChatMessage[]
   /** True while a send is in flight (composer locks). */
   busy: boolean
   send: (text: string) => void
-  /** Answerable frames awaiting the user (active session only). */
+  /** Bumped on each turn/end of the active session (directory refresh cue). */
+  turnTick: number
+  /** Answerable frames awaiting the user (all sessions; filter at render). */
   pendingApprovals: PendingApproval[]
   pendingQuestions: PendingQuestion[]
   answerApproval: (pending: PendingApproval, outcome: 'allowed-once' | 'rejected') => void
@@ -112,17 +137,36 @@ function summarizeArgs(raw: unknown): string | undefined {
   }
 }
 
-export function useDshSession(): DshSession {
+export interface UseDshSessionOptions {
+  /** Workspace to root a fresh session in (composer project picker). */
+  workspaceId?: string | null
+  /** The first send of a fresh draft created this session — select it. */
+  onSessionCreated?: (sessionId: string) => void
+}
+
+export function useDshSession(
+  sessionId: string | null,
+  opts?: UseDshSessionOptions,
+): DshSession {
   const [status, setStatus] = useState<DshStatus>('starting')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const [pendingQuestions, setPendingQuestions] = useState<PendingQuestion[]>([])
+  /** Bumped on every turn/end of the active session (directory refresh cue). */
+  const [turnTick, setTurnTick] = useState(0)
   const sessionIdRef = useRef<string | null>(null)
+  /** Sessions this client created itself — their transcript is already
+   *  local, so the switch effect must not rebuild it from history. */
+  const selfCreatedRef = useRef<Set<string>>(new Set())
   /** Subscribed at most once per bridge-connected epoch. */
   const subscribedRef = useRef(false)
   /** callId → args summary, for the approval card's arguments line. */
   const toolCallsRef = useRef(new Map<string, string>())
+  const onSessionCreatedRef = useRef(opts?.onSessionCreated)
+  onSessionCreatedRef.current = opts?.onSessionCreated
+  const workspaceIdRef = useRef(opts?.workspaceId)
+  workspaceIdRef.current = opts?.workspaceId
 
   useEffect(() => {
     let cancelled = false
@@ -191,6 +235,51 @@ export function useDshSession(): DshSession {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Session switch: rebuild the transcript from the durable event log.
+  // Sessions this client created skip the reload — their transcript is live.
+  useEffect(() => {
+    if (sessionId === sessionIdRef.current) return
+    sessionIdRef.current = sessionId
+    setBusy(false)
+    if (sessionId === null) {
+      setMessages([])
+      return
+    }
+    if (selfCreatedRef.current.has(sessionId)) return
+    let stale = false
+    setMessages([])
+    console.log(`[dsh-session] history load start: ${sessionId}`)
+    void dsh
+      .sessionHistory(sessionId)
+      .then((history) => {
+        if (stale) return
+        const rebuilt: ChatMessage[] = []
+        for (const entry of history.events) {
+          const data = entry.event.data
+          if (entry.event.type === 'user/message') {
+            // Injected context (AGENTS.md, system-prompt snapshots) also
+            // rides user/message — only genuine human input renders.
+            if (!isHumanUserMessage(data)) continue
+            const text = messageEventText(data)
+            if (text !== '') rebuilt.push({ id: nextId(), role: 'user', text })
+          } else if (entry.event.type === 'assistant/message') {
+            const text = messageEventText(data)
+            if (text !== '') rebuilt.push({ id: nextId(), role: 'assistant', text })
+          }
+        }
+        console.log(`[dsh-session] history rebuilt: ${String(rebuilt.length)} messages from ${String(history.events.length)} events`)
+        setMessages(rebuilt)
+      })
+      .catch((error: unknown) => {
+        if (!stale) {
+          console.log(`[dsh-session] history load failed: ${String(error)}`)
+        }
+      })
+    return () => {
+      stale = true
+    }
+  }, [sessionId])
+
   const appendAssistantDelta = useCallback((text: string): void => {
     setMessages((prev) => {
       const last = prev[prev.length - 1]
@@ -231,7 +320,7 @@ export function useDshSession(): DshSession {
           return
         }
         case 'assistant/message': {
-          finalizeAssistant(assistantText(data))
+          finalizeAssistant(messageEventText(data))
           return
         }
         case 'tool/call': {
@@ -244,6 +333,12 @@ export function useDshSession(): DshSession {
           }
           return
         }
+        case 'turn/end': {
+          // Sidebar titles/recency ride the directory's baseline; bump a tick
+          // so it re-pulls once the turn's title/projection writes landed.
+          setTurnTick((n) => n + 1)
+          return
+        }
         default:
           return
       }
@@ -251,10 +346,11 @@ export function useDshSession(): DshSession {
     [appendAssistantDelta, finalizeAssistant],
   )
 
-  /** Answerable approval frames: requested adds, resolved removes. */
+  /** Answerable approval frames: requested adds, resolved removes. Pendings
+   *  are tracked for every session (the render side filters) so the replay
+   *  baseline at subscribe time — which precedes any selection — survives. */
   const handleApproval = useCallback(
     (frame: ApprovalRequestedFrame | ApprovalResolvedFrame, rpcId: string): void => {
-      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
       if (frame.type === 'approval/requested') {
         setPendingApprovals((prev) => {
           if (prev.some((p) => p.approvalId === frame.approvalId)) return prev
@@ -283,7 +379,6 @@ export function useDshSession(): DshSession {
   /** Answerable question frames: requested adds, resolved removes by rpcId. */
   const handleQuestion = useCallback(
     (frame: QuestionRequestedFrame | QuestionResolvedFrame, rpcId: string): void => {
-      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
       if (frame.type === 'question/requested') {
         setPendingQuestions((prev) => {
           if (prev.some((p) => p.rpcId === rpcId)) return prev
@@ -373,9 +468,16 @@ export function useDshSession(): DshSession {
       void (async () => {
         try {
           if (sessionIdRef.current === null) {
-            const cwd = await dsh.defaultCwd()
-            sessionIdRef.current = await dsh.createSession(cwd)
+            const workspaceId = workspaceIdRef.current ?? null
+            const cwd = workspaceId === null ? await dsh.defaultCwd() : undefined
+            sessionIdRef.current = await dsh.createSession(
+              workspaceId !== null
+                ? { workspaceId }
+                : { cwd: cwd ?? '' },
+            )
+            selfCreatedRef.current.add(sessionIdRef.current)
             console.log(`[dsh-session] session created: ${sessionIdRef.current}`)
+            onSessionCreatedRef.current?.(sessionIdRef.current)
           }
           await dsh.prompt(sessionIdRef.current, trimmed)
         } catch (error) {
@@ -402,6 +504,7 @@ export function useDshSession(): DshSession {
     messages,
     busy,
     send,
+    turnTick,
     pendingApprovals,
     pendingQuestions,
     answerApproval,

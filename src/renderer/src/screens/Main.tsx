@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import {
   Icon,
@@ -23,6 +23,8 @@ import type { SidebarViewState } from '../sidebar-view'
 import { ChatStream } from '../dsh/ChatStream'
 import { ApprovalCard, QuestionCard } from '../dsh/gates'
 import { useDshSession } from '../dsh/use-dsh-session'
+import { useDshDirectory } from '../dsh/use-dsh-directory'
+import { dsh } from '../dsh/client'
 
 /** Main screen props. */
 export interface MainProps {
@@ -178,10 +180,10 @@ function relTime(minutesAgo: number): string {
 }
 
 /** Session lifecycle shown in the sidebar (harness projection semantics,
- *  ZCode-style markers): running spins, approval-blocked shows the tail tag,
- *  settled rows keep a quiet dot — green for a clean finish, red for an
- *  abnormal end (network drop, crash). Idle rows carry no marker. */
-type SessionStatus = 'idle' | 'running' | 'needs-confirm' | 'completed' | 'interrupted'
+ *  ZCode-style markers): running spins, abnormal end shows the red dot.
+ *  Approval-blocked is a separate flag (a running session can also be
+ *  waiting on the user). Idle rows carry no marker. */
+type SessionStatus = 'idle' | 'running' | 'interrupted'
 
 interface SessionStub {
   /** Session id. */
@@ -190,10 +192,10 @@ interface SessionStub {
   title: string
   /** Relative recency bucket (minutes) — drives the compact right-side time. */
   updatedMinutesAgo: number
-  /** Lifecycle state driving the row's lead/tail markers. */
+  /** Lifecycle state driving the row's lead marker. */
   status: SessionStatus
-  /** Freshly created, still-empty session: no time, no menu, no card. */
-  placeholder?: boolean
+  /** An answerable frame (approval/question) waits on this session. */
+  pending?: boolean
 }
 
 interface WorkspaceStub {
@@ -205,48 +207,6 @@ interface WorkspaceStub {
   path: string
   sessions: SessionStub[]
 }
-
-const WORKSPACES: readonly WorkspaceStub[] = [
-  {
-    id: 'dsh',
-    title: 'dsh',
-    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh',
-    sessions: [
-      {
-        id: 's1',
-        title: '拉取并研究 deepseek-harness',
-        updatedMinutesAgo: 5760,
-        status: 'completed',
-      },
-      { id: 's2', title: '调研 Electron 嵌入方案', updatedMinutesAgo: 4320, status: 'interrupted' },
-      { id: 's3', title: '跑通 web 端最小闭环', updatedMinutesAgo: 2880, status: 'idle' },
-    ],
-  },
-  {
-    id: 'dsh-desktop',
-    title: 'dsh-desktop',
-    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh\\dsh-desktop',
-    sessions: [
-      { id: 's4', title: '侧栏工作区布局对齐', updatedMinutesAgo: 35, status: 'running' },
-      { id: 's5', title: '底栏按钮体系统一', updatedMinutesAgo: 120, status: 'needs-confirm' },
-      { id: 's6', title: 'Dropdown 十二向与快捷键', updatedMinutesAgo: 1440, status: 'completed' },
-    ],
-  },
-  {
-    id: 'docs',
-    title: 'docs',
-    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\dsh\\docs',
-    sessions: [
-      { id: 's7', title: 'Electron 嵌入方案评估', updatedMinutesAgo: 4320, status: 'idle' },
-    ],
-  },
-  {
-    id: 'unnamed',
-    title: '未命名项目',
-    path: 'C:\\Users\\25293\\Desktop\\aiworkspace\\unnamed',
-    sessions: [],
-  },
-]
 
 const PROJECT_ACTIONS: readonly DropdownAction[] = [
   { id: 'open-folder', label: '打开文件夹' },
@@ -487,7 +447,7 @@ function SessionRow({
   const [menuOpen, setMenuOpen] = useState(false)
   return (
     <div
-      className={`session-row${selected ? ' selected' : ''}${menuOpen ? ' menu-open' : ''}${session.placeholder === true ? ' placeholder' : ''}`}
+      className={`session-row${selected ? ' selected' : ''}${menuOpen ? ' menu-open' : ''}`}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
@@ -504,45 +464,37 @@ function SessionRow({
     >
       <span className="session-lead" aria-hidden="true">
         {session.status === 'running' && <Spinner size={12} className="session-spinner" />}
-        {session.status === 'completed' && <span className="session-dot session-dot--done" />}
         {session.status === 'interrupted' && <span className="session-dot session-dot--stopped" />}
       </span>
       <span className="session-title">{session.title}</span>
-      {session.status === 'needs-confirm' && <span className="session-flag">需要确认</span>}
-      {session.placeholder === true ? (
-        // Fresh blank session: nothing to show or act on yet.
-        <span className="session-time" />
-      ) : (
-        <>
-          <span className="session-time">{relTime(session.updatedMinutesAgo)}</span>
-          <Menu
-            className="row-menu"
-            portal
-            cardClassName="row-menu-card"
-            onOpenChange={setMenuOpen}
-            trigger={({ open, toggle }) => (
-              <button
-                type="button"
-                className="row-action"
-                aria-label="会话操作"
-                aria-haspopup="menu"
-                aria-expanded={open}
-                onClick={toggle}
-              >
-                <Icon viewBox="0 0 16 16" strokeWidth={1.7}>
-                  <circle cx="3.4" cy="8" r="0.7" />
-                  <circle cx="8" cy="8" r="0.7" />
-                  <circle cx="12.6" cy="8" r="0.7" />
-                </Icon>
-              </button>
-            )}
+      {session.pending === true && <span className="session-flag">需要确认</span>}
+      <span className="session-time">{relTime(session.updatedMinutesAgo)}</span>
+      <Menu
+        className="row-menu"
+        portal
+        cardClassName="row-menu-card"
+        onOpenChange={setMenuOpen}
+        trigger={({ open, toggle }) => (
+          <button
+            type="button"
+            className="row-action"
+            aria-label="会话操作"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            onClick={toggle}
           >
-            <MenuItem onClick={() => onAction('rename')}>重命名</MenuItem>
-            <MenuItem onClick={() => onAction('fork')}>分叉会话</MenuItem>
-            <MenuItem onClick={() => onAction('archive')}>归档会话</MenuItem>
-          </Menu>
-        </>
-      )}
+            <Icon viewBox="0 0 16 16" strokeWidth={1.7}>
+              <circle cx="3.4" cy="8" r="0.7" />
+              <circle cx="8" cy="8" r="0.7" />
+              <circle cx="12.6" cy="8" r="0.7" />
+            </Icon>
+          </button>
+        )}
+      >
+        <MenuItem onClick={() => onAction('rename')}>重命名</MenuItem>
+        <MenuItem onClick={() => onAction('fork')}>分叉会话</MenuItem>
+        <MenuItem onClick={() => onAction('archive')}>归档会话</MenuItem>
+      </Menu>
     </div>
   )
 }
@@ -648,9 +600,6 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
-  // Workspace/session data — the seed until the dsh host lands; the row
-  // actions (rename/delete/fork/archive/new) mutate this local copy.
-  const [workspaces, setWorkspaces] = useState<WorkspaceStub[]>([...WORKSPACES])
   // Sidebar view state (grouping/ordering/collapse) persists as one blob.
   const [view, setView] = useState<SidebarViewState>(loadSidebarView)
   const patchView = (patch: Partial<SidebarViewState>): void => {
@@ -667,7 +616,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         : [...view.collapsed, id],
     })
   }
-  // The open session; selection lives only on the row (no sync target yet).
+  // The open session (a real harness session id; null = fresh draft).
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
   // Rename dialog: which row is being renamed, its draft and any error.
   const [renameTarget, setRenameTarget] = useState<
@@ -677,6 +626,60 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [renameError, setRenameError] = useState<string | null>(null)
   // Delete-workspace confirm dialog.
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceStub | null>(null)
+
+  // Real roster over the CodedBridge; the active chat session follows the
+  // sidebar selection.
+  const directory = useDshDirectory()
+  const session = useDshSession(selectedSession, {
+    workspaceId: selectedProject,
+    onSessionCreated: setSelectedSession,
+  })
+
+  // Live title/recency: a finished turn's title write rides the next
+  // directory baseline (the mux-side title event never reaches the roster).
+  const { refresh: refreshDirectory } = directory
+  const turnTickRef = useRef(0)
+  useEffect(() => {
+    if (session.turnTick === turnTickRef.current) return
+    turnTickRef.current = session.turnTick
+    refreshDirectory()
+  }, [session.turnTick, refreshDirectory])
+
+  /** Sessions with an answerable frame waiting (approval/question). */
+  const pendingBySession = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of session.pendingApprovals) set.add(p.sessionId)
+    for (const q of session.pendingQuestions) set.add(q.sessionId)
+    return set
+  }, [session.pendingApprovals, session.pendingQuestions])
+
+  /** Directory → sidebar row shape (recency bucket computed per render). */
+  const workspaces: WorkspaceStub[] = useMemo(
+    () =>
+      directory.workspaces.map((w) => ({
+        id: w.id,
+        title: w.title,
+        path: w.path,
+        sessions: w.sessions.map((s) => ({
+          id: s.id,
+          title: s.title,
+          updatedMinutesAgo: Math.max(0, (Date.now() - s.updatedAt) / 60000),
+          status: s.running ? ('running' as const) : s.errored ? ('interrupted' as const) : ('idle' as const),
+          pending: pendingBySession.has(s.id),
+        })),
+      })),
+    [directory.workspaces, pendingBySession],
+  )
+
+  // Default the composer project to the first workspace, once (the explicit
+  // "不在项目中工作" choice stays respected afterwards).
+  const projectDefaultedRef = useRef(false)
+  useEffect(() => {
+    if (!projectDefaultedRef.current && directory.workspaces.length > 0) {
+      projectDefaultedRef.current = true
+      setSelectedProject(directory.workspaces[0].id)
+    }
+  }, [directory.workspaces])
 
   /** Open the rename dialog pre-filled for a workspace or session row. */
   const openRename = (target: NonNullable<typeof renameTarget>, initial: string): void => {
@@ -695,17 +698,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         setRenameError(`已存在名为"${title}"的工作区。`)
         return
       }
-      const id = renameTarget.id
-      setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, title } : w)))
+      void dsh.renameWorkspace(renameTarget.id, title).then(directory.refresh)
     } else {
-      const { wsId, id } = renameTarget
-      setWorkspaces((prev) =>
-        prev.map((w) =>
-          w.id !== wsId
-            ? w
-            : { ...w, sessions: w.sessions.map((s) => (s.id === id ? { ...s, title } : s)) },
-        ),
-      )
+      void dsh.renameSession(renameTarget.id, title).then(directory.refresh)
     }
     setRenameTarget(null)
   }
@@ -713,78 +708,45 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const confirmDeleteWorkspace = (): void => {
     if (deleteTarget === null) return
     const doomed = deleteTarget
-    setWorkspaces((prev) => prev.filter((w) => w.id !== doomed.id))
+    void dsh.deleteWorkspace(doomed.id).then(directory.refresh)
     if (doomed.sessions.some((s) => s.id === selectedSession)) setSelectedSession(null)
     if (selectedProject === doomed.id) setSelectedProject(null)
     setDeleteTarget(null)
   }
 
-  /** Fork: insert an idle copy right after the source (placeholder for the
-   *  transport-level session.fork). */
-  const forkSession = (wsId: string, source: SessionStub): void => {
-    setWorkspaces((prev) =>
-      prev.map((w) => {
-        if (w.id !== wsId) return w
-        const idx = w.sessions.indexOf(source)
-        if (idx < 0) return w
-        const copy: SessionStub = {
-          id: `fork-${Date.now()}`,
-          title: `${source.title}（分叉）`,
-          updatedMinutesAgo: 0,
-          status: 'idle',
-        }
-        const sessions = [...w.sessions]
-        sessions.splice(idx + 1, 0, copy)
-        return { ...w, sessions }
-      }),
-    )
+  /** Fork: the host answers with the new session's id; select it. */
+  const forkSession = (source: SessionStub): void => {
+    void dsh.forkSession(source.id).then((forkedId) => {
+      directory.refresh()
+      if (forkedId !== null) setSelectedSession(forkedId)
+    })
   }
 
-  /** Archive: non-destructive in the harness, so it just hides the row. */
-  const archiveSession = (wsId: string, sessionId: string): void => {
-    setWorkspaces((prev) =>
-      prev.map((w) =>
-        w.id !== wsId ? w : { ...w, sessions: w.sessions.filter((s) => s.id !== sessionId) },
-      ),
-    )
+  /** Archive: non-destructive; the host frame hides the row. */
+  const archiveSession = (sessionId: string): void => {
+    void dsh.archiveSession(sessionId).then(directory.refresh)
     if (selectedSession === sessionId) setSelectedSession(null)
   }
 
-  /** New session: an empty placeholder row at the group's tail. */
+  /** New session in a workspace: create blank (hidden in the list until its
+   *  first turn, harness parity) and open it immediately. */
   const addSession = (wsId: string): void => {
-    setWorkspaces((prev) =>
-      prev.map((w) =>
-        w.id !== wsId
-          ? w
-          : {
-              ...w,
-              sessions: [
-                ...w.sessions,
-                {
-                  id: `new-${Date.now()}`,
-                  title: '新会话',
-                  updatedMinutesAgo: 0,
-                  status: 'idle',
-                  placeholder: true,
-                },
-              ],
-            },
-      ),
-    )
+    void dsh.createSession({ workspaceId: wsId }).then(setSelectedSession)
   }
 
   /** Route a session row-menu action (shared by grouped and flat views). */
   const dispatchSessionAction = (
     action: SessionAction,
     wsId: string,
-    session: SessionStub,
+    sessionRow: SessionStub,
   ): void => {
+    void wsId // workspace context is implicit in the session id
     if (action === 'rename') {
-      openRename({ kind: 'session', wsId, id: session.id }, session.title)
+      openRename({ kind: 'session', wsId, id: sessionRow.id }, sessionRow.title)
     } else if (action === 'fork') {
-      forkSession(wsId, session)
+      forkSession(sessionRow)
     } else {
-      archiveSession(wsId, session.id)
+      archiveSession(sessionRow.id)
     }
   }
 
@@ -816,17 +778,14 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   )
   const [workMode, setWorkMode] = useState<string | null>('standard')
   // Harness parity: the agent preset is pinned when the session starts, so
-  // the first send flips this and locks the mode selector for the rest of
-  // the conversation.
-  const [conversationStarted, setConversationStarted] = useState(false)
-  // CodedBridge session: status, transcript, composer draft.
-  const session = useDshSession()
+  // the mode selector locks once the conversation has any message.
+  const conversationStarted = session.messages.length > 0
+  // CodedBridge session: transcript + composer draft.
   const [draft, setDraft] = useState('')
   const submitDraft = (): void => {
     const text = draft
     if (text.trim() === '' || session.busy) return
     setDraft('')
-    setConversationStarted(true)
     session.send(text)
   }
   // Access preset: defaults to harness' default pairing (sandbox
@@ -1049,23 +1008,29 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           {session.messages.length > 0 && (
             <ChatStream
               messages={session.messages}
-              trailTick={session.pendingApprovals.length + session.pendingQuestions.length}
+              trailTick={
+                session.pendingApprovals.length + session.pendingQuestions.length
+              }
             >
-              {session.pendingApprovals.map((pending) => (
-                <ApprovalCard
-                  key={pending.approvalId}
-                  pending={pending}
-                  onAnswer={(outcome) => session.answerApproval(pending, outcome)}
-                />
-              ))}
-              {session.pendingQuestions.map((pending) => (
-                <QuestionCard
-                  key={pending.rpcId}
-                  pending={pending}
-                  onSubmit={(answers) => session.answerQuestion(pending, answers)}
-                  onCancel={() => session.cancelQuestion(pending)}
-                />
-              ))}
+              {session.pendingApprovals
+                .filter((pending) => pending.sessionId === selectedSession)
+                .map((pending) => (
+                  <ApprovalCard
+                    key={pending.approvalId}
+                    pending={pending}
+                    onAnswer={(outcome) => session.answerApproval(pending, outcome)}
+                  />
+                ))}
+              {session.pendingQuestions
+                .filter((pending) => pending.sessionId === selectedSession)
+                .map((pending) => (
+                  <QuestionCard
+                    key={pending.rpcId}
+                    pending={pending}
+                    onSubmit={(answers) => session.answerQuestion(pending, answers)}
+                    onCancel={() => session.cancelQuestion(pending)}
+                  />
+                ))}
             </ChatStream>
           )}
 
