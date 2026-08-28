@@ -25,6 +25,7 @@ import type {
   QuestionRequestedFrame,
   QuestionResolvedFrame,
   SessionEventFrame,
+  SessionQueueFrame,
   TextChunk,
 } from './client'
 
@@ -99,6 +100,13 @@ function isHumanUserMessage(data: unknown): boolean {
   return source?.kind === 'user'
 }
 
+/** One queued message (admission pending), rendered in the composer strip. */
+export interface QueuedMessage {
+  id: string
+  placement: 'queued' | 'steering' | 'context'
+  text: string
+}
+
 export interface DshSession {
   status: DshStatus
   messages: ChatMessage[]
@@ -107,6 +115,12 @@ export interface DshSession {
   send: (text: string) => void
   /** Bumped on each turn/end of the active session (directory refresh cue). */
   turnTick: number
+  /** Queued (not yet admitted) messages of the active session. */
+  queue: QueuedMessage[]
+  /** Abort the active session's running turn. */
+  interrupt: () => void
+  /** Remove one queued message. */
+  dequeue: (itemId: string) => void
   /** Answerable frames awaiting the user (all sessions; filter at render). */
   pendingApprovals: PendingApproval[]
   pendingQuestions: PendingQuestion[]
@@ -118,6 +132,7 @@ export interface DshSession {
 /** The mux frame kinds this hook consumes (adapter-side filter list). */
 const MUX_TYPES = [
   'session/event',
+  'session/queue',
   'approval/requested',
   'approval/resolved',
   'question/requested',
@@ -155,6 +170,8 @@ export function useDshSession(
   const [pendingQuestions, setPendingQuestions] = useState<PendingQuestion[]>([])
   /** Bumped on every turn/end of the active session (directory refresh cue). */
   const [turnTick, setTurnTick] = useState(0)
+  /** Queued (not yet admitted) messages of the active session. */
+  const [queue, setQueue] = useState<QueuedMessage[]>([])
   const sessionIdRef = useRef<string | null>(null)
   /** Sessions this client created itself — their transcript is already
    *  local, so the switch effect must not rebuild it from history. */
@@ -188,6 +205,9 @@ export function useDshSession(
             },
             onQuestion: (frame, rpcId) => {
               handleQuestion(frame, rpcId)
+            },
+            onQueue: (frame) => {
+              handleQueue(frame)
             },
             onEnd: (reason) => {
               console.log(`[dsh-session] mux ended: ${reason ?? 'closed'}`)
@@ -241,6 +261,7 @@ export function useDshSession(
     if (sessionId === sessionIdRef.current) return
     sessionIdRef.current = sessionId
     setBusy(false)
+    setQueue([])
     if (sessionId === null) {
       setMessages([])
       return
@@ -392,6 +413,21 @@ export function useDshSession(
     [],
   )
 
+  /** session/queue frames are full snapshots of one session's queue. */
+  const handleQueue = useCallback(
+    (frame: SessionQueueFrame): void => {
+      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
+      setQueue(
+        frame.items.map((item) => ({
+          id: item.id,
+          placement: item.placement,
+          text: contentText(item.message?.content),
+        })),
+      )
+    },
+    [],
+  )
+
   /** Respond helpers: optimistic removal, the resolved frame confirms. */
   const answerApproval = useCallback(
     (pending: PendingApproval, outcome: 'allowed-once' | 'rejected'): void => {
@@ -499,12 +535,41 @@ export function useDshSession(
     [busy],
   )
 
+  /** Abort the active session's running turn. */
+  const interrupt = useCallback((): void => {
+    const id = sessionIdRef.current
+    if (id === null) return
+    void dsh
+      .cancelSession(id)
+      .then((receipt) => {
+        if (!receipt.accepted) {
+          console.log('[dsh-session] cancel refused')
+        }
+      })
+      .catch((error: unknown) => {
+        console.log(`[dsh-session] cancel failed: ${String(error)}`)
+      })
+  }, [])
+
+  /** Remove one queued message (optimistic; the next snapshot confirms). */
+  const dequeue = useCallback((itemId: string): void => {
+    const id = sessionIdRef.current
+    if (id === null) return
+    setQueue((prev) => prev.filter((item) => item.id !== itemId))
+    void dsh.removeQueuedMessage(id, itemId).catch((error: unknown) => {
+      console.log(`[dsh-session] dequeue failed: ${String(error)}`)
+    })
+  }, [])
+
   return {
     status,
     messages,
     busy,
     send,
     turnTick,
+    queue,
+    interrupt,
+    dequeue,
     pendingApprovals,
     pendingQuestions,
     answerApproval,

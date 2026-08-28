@@ -72,6 +72,17 @@ export interface QuestionResolvedFrame {
   outcome: 'answered' | 'cancelled'
 }
 
+/** session/queue mux frame — a FULL snapshot of the session's message queue. */
+export interface SessionQueueFrame {
+  type: 'session/queue'
+  sessionId: string
+  items: {
+    id: string
+    placement: 'queued' | 'steering' | 'context'
+    message: { role: string; content: { type: string; text?: string }[] }
+  }[]
+}
+
 /** rpcResult slot of a respond call: answer value, or the cancel shape. */
 export type RespondResult =
   | { ok: true; value: unknown }
@@ -198,6 +209,16 @@ export const dsh = {
     await dsh.call('workspace.archiveSession', { sessionId })
   },
 
+  /** Abort the session's running turn. Resolves with the carrier receipt. */
+  async cancelSession(sessionId: string): Promise<{ accepted: boolean }> {
+    return (await dsh.call('session.cancel', { sessionId })) as { accepted: boolean }
+  },
+
+  /** Remove one queued message (S2.3 surface; steer/edit come later). */
+  async removeQueuedMessage(sessionId: string, itemId: string): Promise<void> {
+    await dsh.call('session.updateQueue', { sessionId, itemId, action: { kind: 'remove' } })
+  },
+
   async renameWorkspace(workspaceId: string, title: string): Promise<void> {
     await dsh.call('workspace.rename', { workspaceId, title })
   },
@@ -250,6 +271,7 @@ export const dsh = {
       onEvent: (frame: SessionEventFrame) => void
       onApproval?: (frame: ApprovalRequestedFrame | ApprovalResolvedFrame, rpcId: string) => void
       onQuestion?: (frame: QuestionRequestedFrame | QuestionResolvedFrame, rpcId: string) => void
+      onQueue?: (frame: SessionQueueFrame) => void
       onOpen?: () => void
       onEnd?: (reason?: string) => void
     },
@@ -275,9 +297,12 @@ export const dsh = {
           case 'question/resolved':
             handlers.onQuestion?.(frame as unknown as QuestionRequestedFrame, rpcId)
             return
+          case 'session/queue':
+            handlers.onQueue?.(frame as unknown as SessionQueueFrame)
+            return
           default:
-            // Other mux frame kinds (projections, queue views, jobs) get
-            // dedicated helpers when a surface needs them.
+            // Other mux frame kinds (projections, jobs) get dedicated
+            // helpers when a surface needs them.
             return
         }
       },

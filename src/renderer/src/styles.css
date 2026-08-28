@@ -891,6 +891,67 @@ html[data-platform='win32'] .anchor-bar {
   border-color: var(--danger, #e34d59);
 }
 
+/* ---- Queued-message strip (composer, admission pending). ---- */
+
+.queue-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px 2px;
+}
+
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--panel, rgba(128, 128, 128, 0.08));
+  font-size: 12px;
+  color: var(--text);
+}
+
+.queue-badge {
+  flex: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-bg, rgba(232, 115, 74, 0.15));
+  color: var(--accent, #e8734a);
+}
+
+.queue-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #8a8f99);
+  cursor: pointer;
+}
+
+.queue-remove:hover {
+  color: var(--danger, #e34d59);
+  background: var(--panel, rgba(128, 128, 128, 0.12));
+}
+
+/* Stop variant of the send button (running turn). */
+.send-btn--stop {
+  color: var(--danger, #e34d59);
+}
+
 .dlg {
   display: flex;
   flex-direction: column;

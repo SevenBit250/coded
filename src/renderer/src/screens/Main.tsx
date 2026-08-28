@@ -671,6 +671,13 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     [directory.workspaces, pendingBySession],
   )
 
+  /** Whether the ACTIVE session's agent is mid-turn (drives the stop button). */
+  const activeRunning = useMemo(
+    () =>
+      directory.workspaces.some((w) => w.sessions.some((s) => s.id === selectedSession && s.running)),
+    [directory.workspaces, selectedSession],
+  )
+
   // Default the composer project to the first workspace, once (the explicit
   // "不在项目中工作" choice stays respected afterwards).
   const projectDefaultedRef = useRef(false)
@@ -1063,6 +1070,28 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
               />
             </div>
             <div className="composer-body">
+            {session.queue.length > 0 && (
+              <div className="queue-strip" role="list" aria-label="排队中的消息">
+                {session.queue.map((item) => (
+                  <div key={item.id} className="queue-item" role="listitem">
+                    <span className="queue-badge">
+                      {item.placement === 'steering' ? '插话' : '排队'}
+                    </span>
+                    <span className="queue-text">{item.text}</span>
+                    <button
+                      type="button"
+                      className="queue-remove"
+                      aria-label="移除排队消息"
+                      onClick={() => session.dequeue(item.id)}
+                    >
+                      <Icon viewBox="0 0 16 16" strokeWidth={1.6}>
+                        <path d="M4 4l8 8M12 4l-8 8" />
+                      </Icon>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <textarea
               className="composer-input"
               rows={3}
@@ -1208,24 +1237,35 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     </Tooltip>
                   )}
                 />
-                <MetaButton
-                  label="发送"
-                  tip="发送"
-                  tipPlacement="top-left"
-                  className="send-btn"
-                  onClick={() => {
-                    // A real send means a conversation has started; the
-                    // harness pins the agent preset at session creation, so
-                    // the mode selector locks from this moment (placeholder
-                    // for the transport-level session event).
-                    submitDraft()
-                  }}
-                >
-                  {/* lucide:arrow-up */}
-                  <Icon>
-                    <path d="m5 12l7-7 7 7m-7 7V5" />
-                  </Icon>
-                </MetaButton>
+                {/* Running turn: the send button becomes stop (interrupt). */}
+                {activeRunning ? (
+                  <Tooltip label="停止" placement="top-left">
+                    <button
+                      type="button"
+                      className="send-btn send-btn--stop"
+                      aria-label="停止当前回合"
+                      onClick={session.interrupt}
+                    >
+                      {/* lucide:square (stop) */}
+                      <Icon>
+                        <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                      </Icon>
+                    </button>
+                  </Tooltip>
+                ) : (
+                  <MetaButton
+                    label="发送"
+                    tip="发送"
+                    tipPlacement="top-left"
+                    className="send-btn"
+                    onClick={submitDraft}
+                  >
+                    {/* lucide:arrow-up */}
+                    <Icon>
+                      <path d="m5 12l7-7 7 7m-7 7V5" />
+                    </Icon>
+                  </MetaButton>
+                )}
               </div>
             </div>
             </div>
