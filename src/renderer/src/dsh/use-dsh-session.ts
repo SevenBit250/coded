@@ -37,6 +37,21 @@ export interface ChatMessage {
   streaming?: boolean
   /** Set when the send failed before/while dispatching. */
   error?: string
+  /** 'tool' marks a tool-call block (a transcript card, not a chat bubble). */
+  kind?: 'text' | 'tool'
+  /** Tool block fields (kind === 'tool'). */
+  callId?: string
+  toolName?: string
+  /** Presentation title from the host view (falls back to toolName). */
+  toolTitle?: string
+  toolCard?: string
+  toolStatus?: 'running' | 'done'
+  /** Pretty-printed call arguments (expanded view). */
+  argsText?: string
+  /** Result body (expanded view): terminal output or result text. */
+  resultText?: string
+  /** Short result meta line, e.g. "exit 0" or the replacement title. */
+  resultMeta?: string
 }
 
 /** A pending tool-call approval (answerable via its stable envelope rpcId). */
@@ -98,6 +113,16 @@ function messageEventText(data: unknown): string {
 function isHumanUserMessage(data: unknown): boolean {
   const source = (data as { source?: { kind?: unknown } } | undefined)?.source
   return source?.kind === 'user'
+}
+
+/** Pretty-printed call arguments for the tool block's expanded view. */
+function prettyArgs(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw === '') return undefined
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2)
+  } catch {
+    return raw
+  }
 }
 
 /** One queued message (admission pending), rendered in the composer strip. */
@@ -286,6 +311,49 @@ export function useDshSession(
           } else if (entry.event.type === 'assistant/message') {
             const text = messageEventText(data)
             if (text !== '') rebuilt.push({ id: nextId(), role: 'assistant', text })
+          } else if (entry.event.type === 'tool/call') {
+            const call = data as { callId?: unknown; name?: unknown; arguments?: unknown } | undefined
+            if (typeof call?.callId !== 'string') continue
+            const callView = entry.view?.for === 'call' ? entry.view.view : undefined
+            rebuilt.push({
+              id: nextId(),
+              role: 'assistant',
+              text: '',
+              kind: 'tool',
+              callId: call.callId,
+              ...(typeof call.name === 'string' ? { toolName: call.name } : {}),
+              ...(typeof callView?.title === 'string' ? { toolTitle: callView.title } : {}),
+              ...(typeof callView?.card === 'string' ? { toolCard: callView.card } : {}),
+              toolStatus: 'running',
+              ...(prettyArgs(call.arguments) !== undefined
+                ? { argsText: prettyArgs(call.arguments) }
+                : {}),
+            })
+          } else if (entry.event.type === 'tool/result') {
+            const result = data as { callId?: unknown; content?: unknown } | undefined
+            if (typeof result?.callId !== 'string') continue
+            const resultView = entry.view?.for === 'result' ? entry.view.view : undefined
+            const output =
+              typeof resultView?.output === 'string'
+                ? resultView.output
+                : contentText(result.content)
+            for (let i = rebuilt.length - 1; i >= 0; i--) {
+              if (rebuilt[i].kind === 'tool' && rebuilt[i].callId === result.callId) {
+                rebuilt[i] = {
+                  ...rebuilt[i],
+                  ...(typeof resultView?.title === 'string' ? { toolTitle: resultView.title } : {}),
+                  ...(typeof resultView?.card === 'string' ? { toolCard: resultView.card } : {}),
+                  ...(output !== '' ? { resultText: output } : {}),
+                  ...(typeof resultView?.exitCode === 'number'
+                    ? { resultMeta: `exit ${String(resultView.exitCode)}` }
+                    : typeof resultView?.signal === 'string'
+                      ? { resultMeta: `signal ${resultView.signal}` }
+                      : {}),
+                  toolStatus: 'done',
+                }
+                break
+              }
+            }
           }
         }
         console.log(`[dsh-session] history rebuilt: ${String(rebuilt.length)} messages from ${String(history.events.length)} events`)
@@ -323,6 +391,37 @@ export function useDshSession(
     })
   }, [])
 
+  /** Append a tool-call block; drops an empty non-streaming bubble that a
+   *  textless assistant/message left behind (placeholder cleanup). */
+  const appendToolBlock = useCallback((block: ChatMessage): void => {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      const base =
+        last !== undefined && last.kind === undefined && last.role === 'assistant' &&
+        last.text === '' && last.streaming !== true && last.error === undefined
+          ? prev.slice(0, -1)
+          : prev
+      return [...base, block]
+    })
+  }, [])
+
+  /** Pair a tool/result with its running block by callId. */
+  const completeToolBlock = useCallback(
+    (callId: string, patch: Partial<ChatMessage>): void => {
+      setMessages((prev) => {
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].kind === 'tool' && prev[i].callId === callId) {
+            const updated = [...prev]
+            updated[i] = { ...prev[i], ...patch, toolStatus: 'done' }
+            return updated
+          }
+        }
+        return prev
+      })
+    },
+    [],
+  )
+
   const handleSessionEvent = useCallback(
     (frame: SessionEventFrame): void => {
       // Only the active session's events render.
@@ -345,13 +444,50 @@ export function useDshSession(
           return
         }
         case 'tool/call': {
+          const call = event.data as
+            | { callId?: unknown; name?: unknown; arguments?: unknown }
+            | undefined
+          if (typeof call?.callId !== 'string') return
           // Remember the arguments so an approval card can show what it is
           // approving (approval/requested itself carries no arguments).
-          const call = event.data as { callId?: unknown; arguments?: unknown } | undefined
-          if (typeof call?.callId === 'string') {
-            const summary = summarizeArgs(call.arguments)
-            if (summary !== undefined) toolCallsRef.current.set(call.callId, summary)
-          }
+          const summary = summarizeArgs(call.arguments)
+          if (summary !== undefined) toolCallsRef.current.set(call.callId, summary)
+          // Transcript block. Host presentation view wins for the title.
+          const callView = frame.view?.for === 'call' ? frame.view.view : undefined
+          appendToolBlock({
+            id: nextId(),
+            role: 'assistant',
+            text: '',
+            kind: 'tool',
+            callId: call.callId,
+            ...(typeof call.name === 'string' ? { toolName: call.name } : {}),
+            ...(typeof callView?.title === 'string' ? { toolTitle: callView.title } : {}),
+            ...(typeof callView?.card === 'string' ? { toolCard: callView.card } : {}),
+            toolStatus: 'running',
+            ...(prettyArgs(call.arguments) !== undefined
+              ? { argsText: prettyArgs(call.arguments) }
+              : {}),
+          })
+          return
+        }
+        case 'tool/result': {
+          const result = event.data as { callId?: unknown; content?: unknown } | undefined
+          if (typeof result?.callId !== 'string') return
+          const resultView = frame.view?.for === 'result' ? frame.view.view : undefined
+          const output =
+            typeof resultView?.output === 'string'
+              ? resultView.output
+              : contentText(result.content)
+          completeToolBlock(result.callId, {
+            ...(typeof resultView?.title === 'string' ? { toolTitle: resultView.title } : {}),
+            ...(typeof resultView?.card === 'string' ? { toolCard: resultView.card } : {}),
+            ...(output !== '' ? { resultText: output } : {}),
+            ...(typeof resultView?.exitCode === 'number'
+              ? { resultMeta: `exit ${String(resultView.exitCode)}` }
+              : typeof resultView?.signal === 'string'
+                ? { resultMeta: `signal ${resultView.signal}` }
+                : {}),
+          })
           return
         }
         case 'turn/end': {

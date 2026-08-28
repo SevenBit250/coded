@@ -22,6 +22,8 @@ export interface SessionEventFrame {
   sessionId: string
   /** SessionEvent: payload lives in the `data` slot (e.g. data.chunk). */
   event: { type: string; data?: unknown; [key: string]: unknown }
+  /** Host-computed tool presentation, present on tool/call + tool/result. */
+  view?: { for: 'call' | 'result'; view: { card?: string; title?: string; [key: string]: unknown } }
 }
 
 /** The slice of StreamChunk (dsh-llm) this client surfaces. */
@@ -113,7 +115,10 @@ export interface WorkspaceView {
 
 /** session.history response page. */
 export interface SessionHistory {
-  events: { event: { type: string; data?: unknown } }[]
+  events: {
+    event: { type: string; data?: unknown }
+    view?: { for: 'call' | 'result'; view: { card?: string; title?: string; [key: string]: unknown } }
+  }[]
   hasMore: boolean
 }
 
