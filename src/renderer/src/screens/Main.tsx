@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { ReactElement } from 'react'
+import { useMemo, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactElement } from 'react'
 import {
   Icon,
   IconButton,
@@ -14,6 +14,7 @@ import {
   MenuItem,
   MenuDivider,
   MenuLabel,
+  Dialog,
 } from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
@@ -188,6 +189,8 @@ interface SessionStub {
   updatedMinutesAgo: number
   /** Lifecycle state driving the row's lead/tail markers. */
   status: SessionStatus
+  /** Freshly created, still-empty session: no time, no menu, no card. */
+  placeholder?: boolean
 }
 
 interface WorkspaceStub {
@@ -195,7 +198,7 @@ interface WorkspaceStub {
   id: string
   /** Display title. */
   title: string
-  /** Filesystem path (canonical; shown on hover in P4). */
+  /** Filesystem path (canonical). */
   path: string
   sessions: SessionStub[]
 }
@@ -242,13 +245,6 @@ const WORKSPACES: readonly WorkspaceStub[] = [
   },
 ]
 
-/** Dropdown fuel for the workspace selector — module-level so the references
- *  stay stable across renders (unstable literals used to re-trigger the
- *  dropdown's placement effect on every parent render). */
-const PROJECT_OPTIONS: readonly DropdownOption[] = WORKSPACES.map((w) => ({
-  id: w.id,
-  label: w.title,
-}))
 const PROJECT_ACTIONS: readonly DropdownAction[] = [
   { id: 'open-folder', label: '打开文件夹' },
   { id: 'remote-connect', label: '远程连接' },
@@ -460,22 +456,48 @@ function byRecency(a: SessionStub, b: SessionStub): number {
   return a.updatedMinutesAgo - b.updatedMinutesAgo
 }
 
+/** Actions offered in a session row's ⋯ menu. */
+type SessionAction = 'rename' | 'fork' | 'archive'
+
+/** Actions offered in a workspace row's ⋯ menu. */
+type WorkspaceAction = 'rename' | 'delete'
+
+/** True when the event started inside the row's inline action zone. */
+function fromActionZone(event: ReactMouseEvent | ReactKeyboardEvent): boolean {
+  return (event.target as HTMLElement).closest('.row-menu, .row-actions') !== null
+}
+
 /** One session row: fixed lead slot (spinner/dots), title, approval tag,
- *  recency. `selected` is the persistent pressed state (the open session). */
+ *  recency, hover ⋯ menu. The row is a div[role=button] so the inline menu
+ *  can nest real buttons. */
 function SessionRow({
   session,
   selected,
   onSelect,
+  onAction,
 }: {
   session: SessionStub
   selected: boolean
   onSelect: () => void
+  onAction: (action: SessionAction) => void
 }): ReactElement {
+  const [menuOpen, setMenuOpen] = useState(false)
   return (
-    <button
-      className={`session-row${selected ? ' selected' : ''}`}
+    <div
+      className={`session-row${selected ? ' selected' : ''}${menuOpen ? ' menu-open' : ''}${session.placeholder === true ? ' placeholder' : ''}`}
+      role="button"
+      tabIndex={0}
       aria-pressed={selected}
-      onClick={onSelect}
+      onClick={(event) => {
+        if (fromActionZone(event)) return
+        onSelect()
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        if (fromActionZone(event)) return
+        event.preventDefault()
+        onSelect()
+      }}
     >
       <span className="session-lead" aria-hidden="true">
         {session.status === 'running' && <Spinner size={12} className="session-spinner" />}
@@ -484,8 +506,131 @@ function SessionRow({
       </span>
       <span className="session-title">{session.title}</span>
       {session.status === 'needs-confirm' && <span className="session-flag">需要确认</span>}
-      <span className="session-time">{relTime(session.updatedMinutesAgo)}</span>
-    </button>
+      {session.placeholder === true ? (
+        // Fresh blank session: nothing to show or act on yet.
+        <span className="session-time" />
+      ) : (
+        <>
+          <span className="session-time">{relTime(session.updatedMinutesAgo)}</span>
+          <Menu
+            className="row-menu"
+            portal
+            cardClassName="row-menu-card"
+            onOpenChange={setMenuOpen}
+            trigger={({ open, toggle }) => (
+              <button
+                type="button"
+                className="row-action"
+                aria-label="会话操作"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={toggle}
+              >
+                <Icon viewBox="0 0 16 16" strokeWidth={1.7}>
+                  <circle cx="3.4" cy="8" r="0.7" />
+                  <circle cx="8" cy="8" r="0.7" />
+                  <circle cx="12.6" cy="8" r="0.7" />
+                </Icon>
+              </button>
+            )}
+          >
+            <MenuItem onClick={() => onAction('rename')}>重命名</MenuItem>
+            <MenuItem onClick={() => onAction('fork')}>分叉会话</MenuItem>
+            <MenuItem onClick={() => onAction('archive')}>归档会话</MenuItem>
+          </Menu>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** One workspace group header row: folder-open/closed carries the collapse
+ *  state; hover reveals the ⋯ menu (rename/delete) and the + new-session
+ *  button. The row is a div[role=button] so the inline actions can nest
+ *  real buttons. */
+function WorkspaceRow({
+  workspace,
+  collapsed,
+  onToggle,
+  onNewSession,
+  onAction,
+}: {
+  workspace: WorkspaceStub
+  collapsed: boolean
+  onToggle: () => void
+  onNewSession: () => void
+  onAction: (action: WorkspaceAction) => void
+}): ReactElement {
+  const [menuOpen, setMenuOpen] = useState(false)
+  return (
+    <div
+      className={`project${menuOpen ? ' menu-open' : ''}`}
+      role="button"
+      tabIndex={0}
+      aria-expanded={!collapsed}
+      onClick={(event) => {
+        if (fromActionZone(event)) return
+        onToggle()
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        if (fromActionZone(event)) return
+        event.preventDefault()
+        onToggle()
+      }}
+    >
+        <span className="project-name">
+          <Icon className="folder" viewBox="0 0 24 24" strokeWidth={1.8}>
+            {collapsed ? (
+              /* lucide:folder */
+              <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+            ) : (
+              /* lucide:folder-open */
+              <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+            )}
+          </Icon>
+          {workspace.title}
+        </span>
+        <span className="row-actions">
+          <Menu
+            className="row-menu"
+            portal
+            cardClassName="row-menu-card"
+            onOpenChange={setMenuOpen}
+            trigger={({ open, toggle }) => (
+              <button
+                type="button"
+                className="row-action"
+                aria-label="工作区操作"
+                aria-haspopup="menu"
+                aria-expanded={open}
+                onClick={toggle}
+              >
+                <Icon viewBox="0 0 16 16" strokeWidth={1.7}>
+                  <circle cx="3.4" cy="8" r="0.7" />
+                  <circle cx="8" cy="8" r="0.7" />
+                  <circle cx="12.6" cy="8" r="0.7" />
+                </Icon>
+              </button>
+            )}
+          >
+            <MenuItem onClick={() => onAction('rename')}>重命名</MenuItem>
+            <MenuItem danger onClick={() => onAction('delete')}>
+              删除工作区
+            </MenuItem>
+          </Menu>
+          <button
+            type="button"
+            className="row-action"
+            aria-label="新建会话"
+            onClick={onNewSession}
+          >
+            <Icon viewBox="0 0 16 16" strokeWidth={1.4}>
+              <path d="M8 3.5v9M3.5 8h9" />
+            </Icon>
+          </button>
+        </span>
+      </div>
   )
 }
 
@@ -500,6 +645,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
   const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  // Workspace/session data — the seed until the dsh host lands; the row
+  // actions (rename/delete/fork/archive/new) mutate this local copy.
+  const [workspaces, setWorkspaces] = useState<WorkspaceStub[]>([...WORKSPACES])
   // Sidebar view state (grouping/ordering/collapse) persists as one blob.
   const [view, setView] = useState<SidebarViewState>(loadSidebarView)
   const patchView = (patch: Partial<SidebarViewState>): void => {
@@ -518,20 +666,151 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   }
   // The open session; selection lives only on the row (no sync target yet).
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  // Rename dialog: which row is being renamed, its draft and any error.
+  const [renameTarget, setRenameTarget] = useState<
+    { kind: 'workspace'; id: string } | { kind: 'session'; wsId: string; id: string } | null
+  >(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const [renameError, setRenameError] = useState<string | null>(null)
+  // Delete-workspace confirm dialog.
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceStub | null>(null)
+
+  /** Open the rename dialog pre-filled for a workspace or session row. */
+  const openRename = (target: NonNullable<typeof renameTarget>, initial: string): void => {
+    setRenameTarget(target)
+    setRenameDraft(initial)
+    setRenameError(null)
+  }
+
+  const submitRename = (): void => {
+    if (renameTarget === null) return
+    const title = renameDraft.trim()
+    if (title === '') return
+    if (renameTarget.kind === 'workspace') {
+      // Harness parity: duplicate workspace names are refused.
+      if (workspaces.some((w) => w.title === title && w.id !== renameTarget.id)) {
+        setRenameError(`已存在名为"${title}"的工作区。`)
+        return
+      }
+      const id = renameTarget.id
+      setWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, title } : w)))
+    } else {
+      const { wsId, id } = renameTarget
+      setWorkspaces((prev) =>
+        prev.map((w) =>
+          w.id !== wsId
+            ? w
+            : { ...w, sessions: w.sessions.map((s) => (s.id === id ? { ...s, title } : s)) },
+        ),
+      )
+    }
+    setRenameTarget(null)
+  }
+
+  const confirmDeleteWorkspace = (): void => {
+    if (deleteTarget === null) return
+    const doomed = deleteTarget
+    setWorkspaces((prev) => prev.filter((w) => w.id !== doomed.id))
+    if (doomed.sessions.some((s) => s.id === selectedSession)) setSelectedSession(null)
+    if (selectedProject === doomed.id) setSelectedProject(null)
+    setDeleteTarget(null)
+  }
+
+  /** Fork: insert an idle copy right after the source (placeholder for the
+   *  transport-level session.fork). */
+  const forkSession = (wsId: string, source: SessionStub): void => {
+    setWorkspaces((prev) =>
+      prev.map((w) => {
+        if (w.id !== wsId) return w
+        const idx = w.sessions.indexOf(source)
+        if (idx < 0) return w
+        const copy: SessionStub = {
+          id: `fork-${Date.now()}`,
+          title: `${source.title}（分叉）`,
+          updatedMinutesAgo: 0,
+          status: 'idle',
+        }
+        const sessions = [...w.sessions]
+        sessions.splice(idx + 1, 0, copy)
+        return { ...w, sessions }
+      }),
+    )
+  }
+
+  /** Archive: non-destructive in the harness, so it just hides the row. */
+  const archiveSession = (wsId: string, sessionId: string): void => {
+    setWorkspaces((prev) =>
+      prev.map((w) =>
+        w.id !== wsId ? w : { ...w, sessions: w.sessions.filter((s) => s.id !== sessionId) },
+      ),
+    )
+    if (selectedSession === sessionId) setSelectedSession(null)
+  }
+
+  /** New session: an empty placeholder row at the group's tail. */
+  const addSession = (wsId: string): void => {
+    setWorkspaces((prev) =>
+      prev.map((w) =>
+        w.id !== wsId
+          ? w
+          : {
+              ...w,
+              sessions: [
+                ...w.sessions,
+                {
+                  id: `new-${Date.now()}`,
+                  title: '新会话',
+                  updatedMinutesAgo: 0,
+                  status: 'idle',
+                  placeholder: true,
+                },
+              ],
+            },
+      ),
+    )
+  }
+
+  /** Route a session row-menu action (shared by grouped and flat views). */
+  const dispatchSessionAction = (
+    action: SessionAction,
+    wsId: string,
+    session: SessionStub,
+  ): void => {
+    if (action === 'rename') {
+      openRename({ kind: 'session', wsId, id: session.id }, session.title)
+    } else if (action === 'fork') {
+      forkSession(wsId, session)
+    } else {
+      archiveSession(wsId, session.id)
+    }
+  }
+
   // View derivation: 'updated' orders sessions by recency (workspace groups
   // follow their most recent session); 'manual' keeps declared order.
   const orderedSessions = (sessions: SessionStub[]): SessionStub[] =>
     view.orderBy === 'updated' ? [...sessions].sort(byRecency) : sessions
   const orderedWorkspaces =
     view.groupBy === 'workspace' && view.orderBy === 'updated'
-      ? [...WORKSPACES].sort(
+      ? [...workspaces].sort(
           (a, b) =>
             Math.min(...a.sessions.map((s) => s.updatedMinutesAgo), Infinity) -
             Math.min(...b.sessions.map((s) => s.updatedMinutesAgo), Infinity),
         )
-      : WORKSPACES
+      : workspaces
+  const flatEntries = workspaces.flatMap((w) => w.sessions.map((s) => ({ ws: w, session: s })))
   const flatSessions =
-    view.groupBy === 'flat' ? orderedSessions(WORKSPACES.flatMap((w) => w.sessions)) : null
+    view.groupBy === 'flat'
+      ? view.orderBy === 'updated'
+        ? [...flatEntries].sort((a, b) => byRecency(a.session, b.session))
+        : flatEntries
+      : null
+  // Composer's workspace picker follows the live list; memoized so its
+  // references stay stable across renders (Dropdown placement re-runs on
+  // unstable literals).
+  const projectOptions = useMemo<DropdownOption[]>(
+    () => workspaces.map((w) => ({ id: w.id, label: w.title })),
+    [workspaces],
+  )
   const [workMode, setWorkMode] = useState<string | null>('standard')
   // Harness parity: the agent preset is pinned when the session starts, so
   // the first send flips this and locks the mode selector for the rest of
@@ -658,12 +937,13 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
             {view.groupBy === 'flat' ? (
               /* Flat list: every session in one recency-ordered column. */
               <div className="session-list">
-                {flatSessions?.map((s) => (
+                {flatSessions?.map(({ ws, session }) => (
                   <SessionRow
-                    key={s.id}
-                    session={s}
-                    selected={selectedSession === s.id}
-                    onSelect={() => setSelectedSession(s.id)}
+                    key={session.id}
+                    session={session}
+                    selected={selectedSession === session.id}
+                    onSelect={() => setSelectedSession(session.id)}
+                    onAction={(action) => dispatchSessionAction(action, ws.id, session)}
                   />
                 ))}
               </div>
@@ -675,28 +955,19 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     key={workspace.id}
                     className={`workspace-group${isCollapsed ? ' collapsed' : ''}`}
                   >
-                    {/* Header row: clicking toggles the group only — the row
-                        never takes a selected tint (selection lives in the
-                        composer's workspace picker); the folder icon carries
-                        the state (open = expanded, closed = collapsed). */}
-                    <button
-                      className="project"
-                      aria-expanded={!isCollapsed}
-                      onClick={() => toggleWorkspace(workspace.id)}
-                    >
-                      <span className="project-name">
-                        <Icon className="folder" viewBox="0 0 24 24" strokeWidth={1.8}>
-                          {isCollapsed ? (
-                            /* lucide:folder */
-                            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-                          ) : (
-                            /* lucide:folder-open */
-                            <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
-                          )}
-                        </Icon>
-                        {workspace.title}
-                      </span>
-                    </button>
+                    <WorkspaceRow
+                      workspace={workspace}
+                      collapsed={isCollapsed}
+                      onToggle={() => toggleWorkspace(workspace.id)}
+                      onNewSession={() => addSession(workspace.id)}
+                      onAction={(action) => {
+                        if (action === 'rename') {
+                          openRename({ kind: 'workspace', id: workspace.id }, workspace.title)
+                        } else {
+                          setDeleteTarget(workspace)
+                        }
+                      }}
+                    />
                     {/* Grid-rows collapse: 1fr -> 0fr animates the group shut
                         without measuring heights. */}
                     <div className="workspace-sessions-wrap">
@@ -707,6 +978,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                             session={s}
                             selected={selectedSession === s.id}
                             onSelect={() => setSelectedSession(s.id)}
+                            onAction={(action) =>
+                              dispatchSessionAction(action, workspace.id, s)
+                            }
                           />
                         ))}
                       </div>
@@ -768,7 +1042,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           <div className="composer">
             <div className="composer-head">
               <Dropdown
-                options={PROJECT_OPTIONS}
+                options={projectOptions}
                 value={selectedProject}
                 onChange={setSelectedProject}
                 actions={PROJECT_ACTIONS}
@@ -952,6 +1226,67 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         </main>
         </div>
       </div>
+
+      {/* Row-action dialogs: rename (workspace/session, duplicate-checked)
+          and the delete-workspace confirm. */}
+      <Dialog
+        open={renameTarget !== null}
+        onClose={() => setRenameTarget(null)}
+        label={renameTarget?.kind === 'workspace' ? '重命名工作区' : '重命名会话'}
+      >
+        <div className="dlg">
+          <h2 className="dlg-title">
+            {renameTarget?.kind === 'workspace' ? '重命名工作区' : '重命名会话'}
+          </h2>
+          <input
+            className="dlg-input"
+            value={renameDraft}
+            autoFocus
+            aria-label={renameTarget?.kind === 'workspace' ? '工作区名称' : '会话名称'}
+            onChange={(event) => {
+              setRenameDraft(event.target.value)
+              setRenameError(null)
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) submitRename()
+            }}
+          />
+          {renameError !== null && <p className="dlg-error">{renameError}</p>}
+          <div className="dlg-actions">
+            <button type="button" className="dlg-btn" onClick={() => setRenameTarget(null)}>
+              取消
+            </button>
+            <button type="button" className="dlg-btn dlg-btn--primary" onClick={submitRename}>
+              重命名
+            </button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        label="删除工作区"
+      >
+        <div className="dlg">
+          <h2 className="dlg-title">删除工作区</h2>
+          <p className="dlg-text">
+            将把“{deleteTarget?.title ?? ''}”从工作区列表中移除。文件夹与会话记录会保留。
+          </p>
+          <div className="dlg-actions">
+            <button type="button" className="dlg-btn" onClick={() => setDeleteTarget(null)}>
+              取消
+            </button>
+            <button
+              type="button"
+              className="dlg-btn dlg-btn--danger"
+              onClick={confirmDeleteWorkspace}
+            >
+              删除工作区
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </section>
   )
 }

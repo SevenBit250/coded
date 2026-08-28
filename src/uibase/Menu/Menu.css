@@ -14,6 +14,19 @@
   animation: ui-menu-pop 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Portal mode: the wrapper IS the card's frame — fixed at the trigger's
+   bottom-right corner and shifted left by its own width, so the card's
+   right edge lines up with the trigger. One box, nothing to drift apart. */
+.ui-menu-portal {
+  position: fixed;
+  z-index: 50;
+  transform: translateX(-100%);
+}
+
+.ui-menu-portal .ui-menu {
+  position: static;
+}
+
 .ui-menu--closing {
   animation: ui-menu-pop-out 0.11s ease both;
 }
@@ -58,6 +71,11 @@
 
 .ui-menu-item:hover {
   background: rgba(var(--ink-rgb, 20, 22, 26), 0.05);
+}
+
+/* Destructive entry (delete workspace, …). */
+.ui-menu-item--danger {
+  color: var(--danger, #e34d59);
 }
 
 /* Non-interactive group caption. */

@@ -493,10 +493,12 @@ html[data-platform='win32'] .anchor-bar {
 }
 
 /* Workspace group: the workspace row is the group header; its sessions hang
-   beneath it, indented to read as children of the workspace. */
+   beneath it, indented to read as children of the workspace. 2px gaps keep
+   the hover tints of adjacent rows from reading as one block. */
 .workspace-group {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 /* Collapse shell: 1fr -> 0fr animates the group shut without measuring
@@ -514,6 +516,7 @@ html[data-platform='win32'] .anchor-bar {
 .workspace-sessions {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   min-height: 0;
   overflow: hidden;
 }
@@ -526,9 +529,11 @@ html[data-platform='win32'] .anchor-bar {
   /* The hover block spans the full row width (same insets as the workspace
      row); the 16px tree indent rides in the left padding, so the text stays
      indented under its parent while the highlight reads full-bleed.
-     Height matches .menu-item / .project: 8 + 18 + 8. */
+     Height is pinned to the shared 34px row (8 + 18 + 8) so swapping the
+     time for the ⋯ button on hover can never grow the row. */
+  height: 34px;
   line-height: 18px;
-  padding: 8px 12px 8px 25px;
+  padding: 0 12px 0 25px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -597,6 +602,179 @@ html[data-platform='win32'] .anchor-bar {
   background: #e8b96a;
 }
 
+/* ---- Row actions: hover-revealed ⋯ menu (+ new-session on workspaces). ---- */
+
+.project-name {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hidden at rest; shown on row hover or while the row's menu is open (the
+   row then keeps its hover tint via .menu-open). */
+.row-actions {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.project:hover .row-actions,
+.project.menu-open .row-actions {
+  display: inline-flex;
+}
+
+.row-action {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.row-action:hover {
+  background: rgba(var(--ink-rgb), 0.08);
+  color: var(--text-dim);
+}
+
+.row-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Session row: the ⋯ button swaps in for the recency time. */
+.row-menu {
+  display: none;
+  flex: none;
+}
+
+.session-row:hover .row-menu,
+.session-row.menu-open .row-menu {
+  display: block;
+}
+
+.session-row:hover .session-time,
+.session-row.menu-open .session-time {
+  display: none;
+}
+
+/* Row menu (portal card): short entries, narrower than the default card. */
+.row-menu-card {
+  min-width: 132px;
+}
+
+/* Rows are div[role=button]; keep a visible focus ring on keyboard focus. */
+.project:focus-visible,
+.session-row:focus-visible {
+  outline: 2px solid var(--accent, #e8734a);
+  outline-offset: -2px;
+}
+
+/* Fresh placeholder row ("新会话"): quiet until it has content. */
+.session-row.placeholder .session-title {
+  color: var(--text-faint);
+}
+
+/* ---- Dialog content: rename (workspace/session) + delete confirm. ---- */
+
+.dlg {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+}
+
+.dlg-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+  text-align: center;
+}
+
+.dlg-input {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border, #e6e8ee);
+  border-radius: 8px;
+  background: var(--bg, #fbfbfd);
+  color: var(--text, #26272d);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.dlg-input:focus {
+  outline: none;
+  border-color: var(--accent, #e8734a);
+}
+
+.dlg-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--danger, #e34d59);
+}
+
+.dlg-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.dlg-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dlg-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border, #e6e8ee);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dlg-btn:hover {
+  background: rgba(var(--ink-rgb), 0.05);
+  color: var(--text);
+}
+
+.dlg-btn--primary {
+  border-color: transparent;
+  background: var(--accent, #e8734a);
+  color: #ffffff;
+}
+
+.dlg-btn--primary:hover {
+  filter: brightness(1.06);
+  color: #ffffff;
+}
+
+.dlg-btn--danger {
+  border-color: transparent;
+  background: var(--danger, #e34d59);
+  color: #ffffff;
+}
+
+.dlg-btn--danger:hover {
+  filter: brightness(1.06);
+  color: #ffffff;
+}
+
 .session-title {
   flex: 1;
   min-width: 0;
@@ -615,11 +793,12 @@ html[data-platform='win32'] .anchor-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Same 34px row as .menu-item (8 + 18 + 8). Right side keeps clear of the
-     ScrollArea thumb lane (6px strip at the panel's right edge) so a hovered
-     row never reads as clipped by it. */
+  /* Fixed 34px row (border-box): 8 + 18 + 8, same rhythm as .menu-item.
+     Height is pinned so hover-revealed inline actions can never grow the
+     row and shuffle the list. */
+  height: 34px;
   line-height: 18px;
-  padding: 8px 12px 8px 9px;
+  padding: 0 12px 0 9px;
   border: 0;
   border-radius: 9px;
   background: transparent;
