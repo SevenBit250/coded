@@ -46,10 +46,18 @@ export interface QuestionItem {
   intent?: { kind: 'plan-review'; approve: string }
 }
 
-/** rpcResult slot of a respond call: answer value, or the cancel shape. */
-export type RespondResult =
-  | { ok: true; value: unknown }
-  | { ok: false; error: { code: string; message: string } }
+/** One answer inside a question batch response. */
+export interface QuestionAnswerItem {
+  id: string
+  selected: string[]
+  custom?: string
+}
+
+/** Semantic gate answer (coded.session.respond), §2.2. */
+export type GateAnswer =
+  | { kind: 'approval'; approvalId: string; outcome: 'allow-once' | 'reject' }
+  | { kind: 'question'; answers: QuestionAnswerItem[] }
+  | 'cancel'
 
 /** ---- Directory domain (S2.1): sessions/workspaces listing. ---- */
 
@@ -160,8 +168,9 @@ export const dsh = {
   },
 
   /** Remove one queued message (S2.3 surface; steer/edit come later). */
+  /** Remove one queued message (the next queue.changed snapshot confirms). */
   async removeQueuedMessage(sessionId: string, itemId: string): Promise<void> {
-    await dsh.call('session.updateQueue', { sessionId, itemId, action: { kind: 'remove' } })
+    await window.dshDesktop.dsh.invoke('coded.queue.remove', { sessionId, itemId })
   },
 
   /** ---- Semantic domain (M1 pilot): coded.* methods only below. Payloads
@@ -215,7 +224,7 @@ export const dsh = {
 
   /** Queue one text prompt into the session. */
   async prompt(sessionId: string, text: string): Promise<void> {
-    await dsh.call('session.prompt', {
+    await window.dshDesktop.dsh.invoke('coded.session.send', {
       sessionId,
       mode: 'queue',
       content: [{ type: 'text', text }],
@@ -223,19 +232,21 @@ export const dsh = {
   },
 
   /**
-   * Answer an answerable frame (approval/question). `rpcId` is the stable id
-   * from the frame's envelope; `result` is the rpcResult verbatim. Resolves
-   * with the carrier's receipt — check `accepted` (a late/duplicate answer is
-   * refused, not an error). NOTE: /api/respond answers with the bare
-   * RpcReceipt — no server-response envelope — so this bypasses `call`'s
-   * unwrap on purpose.
+   * Answer an answerable frame (approval/question) through the unified
+   * semantic gate (§2.2). `gateId` is the stable id the requested event
+   * carried; a late/duplicate answer resolves `{accepted: false, reason}` —
+   * refused, not an error.
    */
-  async respond(rpcId: string, result: RespondResult): Promise<{ accepted: boolean; reason?: string }> {
-    const receipt = (await window.dshDesktop.dsh.invoke('respond', { rpcId, result })) as {
-      accepted: boolean
-      reason?: string
-    }
-    return receipt
+  async respond(
+    sessionId: string,
+    gateId: string,
+    answer: GateAnswer,
+  ): Promise<{ accepted: boolean; reason?: string }> {
+    return (await window.dshDesktop.dsh.invoke('coded.session.respond', {
+      sessionId,
+      gateId,
+      answer,
+    })) as { accepted: boolean; reason?: string }
   },
 
   /**

@@ -22,6 +22,7 @@ import type {
   CodedSemanticEvent,
   CodedTranscriptItem,
   DshStatus,
+  QuestionAnswerItem,
   QuestionItem,
 } from './client'
 
@@ -46,12 +47,8 @@ export interface PendingQuestion {
   questions: QuestionItem[]
 }
 
-/** One answer inside a question batch response. */
-export interface QuestionAnswerItem {
-  id: string
-  selected: string[]
-  custom?: string
-}
+/** One answer inside a question batch response (wire shape lives in client). */
+export type { QuestionAnswerItem }
 
 /** One queued message (admission pending), rendered in the composer strip. */
 export interface QueuedMessage {
@@ -384,9 +381,10 @@ export function useDshSession(
     (pending: PendingApproval, outcome: 'allowed-once' | 'rejected'): void => {
       setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== pending.approvalId))
       void dsh
-        .respond(pending.gateId, {
-          ok: true,
-          value: { sessionId: pending.sessionId, approvalId: pending.approvalId, outcome },
+        .respond(pending.sessionId, pending.gateId, {
+          kind: 'approval',
+          approvalId: pending.approvalId,
+          outcome: outcome === 'allowed-once' ? 'allow-once' : 'reject',
         })
         .then((receipt) => {
           if (!receipt.accepted) {
@@ -404,10 +402,7 @@ export function useDshSession(
     (pending: PendingQuestion, answers: QuestionAnswerItem[]): void => {
       setPendingQuestions((prev) => prev.filter((p) => p.gateId !== pending.gateId))
       void dsh
-        .respond(pending.gateId, {
-          ok: true,
-          value: { sessionId: pending.sessionId, answer: { answers } },
-        })
+        .respond(pending.sessionId, pending.gateId, { kind: 'question', answers })
         .then((receipt) => {
           if (!receipt.accepted) {
             console.log(`[dsh-session] question respond refused: ${receipt.reason ?? 'unknown'}`)
@@ -424,10 +419,7 @@ export function useDshSession(
     (pending: PendingQuestion): void => {
       setPendingQuestions((prev) => prev.filter((p) => p.gateId !== pending.gateId))
       void dsh
-        .respond(pending.gateId, {
-          ok: false,
-          error: { code: 'cancelled', message: 'the user cancelled' },
-        })
+        .respond(pending.sessionId, pending.gateId, 'cancel')
         .then((receipt) => {
           if (!receipt.accepted) {
             console.log(`[dsh-session] question cancel refused: ${receipt.reason ?? 'unknown'}`)
