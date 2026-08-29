@@ -1,5 +1,5 @@
 /**
- * dsh-desktop main process — Plan B desktop shell.
+ * Coded desktop shell main process.
  *
  * Responsibilities:
  *  - Frameless (no system border) window with native Windows acrylic frosted
@@ -9,14 +9,14 @@
  *  - The startup -> main transition handshake over IPC; the React renderer
  *    drives the animation, this file hosts the wiring.
  *
- * The dsh harness transport / custom-protocol integration is a later step; the
+ * The backend transport integration is already live; the
  * main view is a placeholder (Codex-like) so the window chrome can be validated
- * first, and later swapped to host the dsh React client.
+ * the Coded workspace took over.
  */
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
 import { IPC } from '../shared/ipc'
-import { startDshFace, stopDshFace } from './dsh-face'
+import { startBridgeService, stopBridgeService } from './bridge-service'
 
 /** Window chrome configuration. The frosted-glass values are the ones to
  *  tune by running; everything else here is a window-construction fact. */
@@ -121,7 +121,7 @@ function createWindow(): BrowserWindow {
   })
 
   // Dev only: mirror the renderer console into the terminal — the bridge
-  // session logs ([dsh-client]/[dsh-session]) live in the renderer, and
+  // session logs ([renderer console]) live in the renderer, and
   // without this the terminal alone cannot see whether frames rendered.
   if (isDev) {
     win.webContents.on('console-message', (details) => {
@@ -168,13 +168,13 @@ function registerWindowControls(): void {
 
   // Lifecycle handshake from the React renderer. `ready` is informational
   // (the window is shown on first paint via ready-to-show); `transition`
-  // marks the startup -> main handoff, the seam where the real dsh view will
+  // marks the startup -> main handoff, the seam where the real workspace view
   // later request a frame change.
   ipcMain.on(IPC.shell.ready, () => {
     /* first paint done */
   })
   ipcMain.on(IPC.shell.transition, () => {
-    /* startup -> main handoff; frame change hook for the dsh view */
+    /* startup -> main handoff; frame change hook for the workspace view */
   })
 }
 
@@ -197,7 +197,7 @@ if (!gotLock) {
     createWindow()
     // Harness runtime + CodedBridge: spawn, readiness watch, pipe client,
     // IPC surface. Failures land in the status broadcast, not the window.
-    startDshFace()
+    startBridgeService()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -206,15 +206,15 @@ if (!gotLock) {
 
   // Quit handshake: tear the bridge and the harness process tree down first
   // (taskkill /T on Windows), then let the quit proceed.
-  let dshCleaned = false
+  let serviceStopped = false
   app.on('before-quit', (event) => {
-    if (dshCleaned) return
-    console.log('[lifecycle] before-quit: stopping dsh face')
+    if (serviceStopped) return
+    console.log('[lifecycle] before-quit: stopping bridge service')
     event.preventDefault()
-    void stopDshFace()
+    void stopBridgeService()
       .catch(() => {})
       .then(() => {
-        dshCleaned = true
+        serviceStopped = true
         app.quit()
       })
   })

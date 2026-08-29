@@ -11,7 +11,7 @@ export interface LastWorkspace {
   path: string | null
 }
 
-const WORKSPACE_KEY = 'dsh-workspace'
+const WORKSPACE_KEY = 'coded-workspace'
 
 /** Read the persisted choice; null = nothing stored (first run). */
 export function loadLastWorkspace(): LastWorkspace | null {

@@ -6,7 +6,7 @@
  */
 import { useState } from 'react'
 import type { ReactElement } from 'react'
-import type { PendingApproval, PendingQuestion, QuestionAnswerItem } from './use-dsh-session'
+import type { PendingApproval, PendingQuestion, QuestionAnswerItem } from './use-session'
 
 /** Tool-approval card: what is about to run, then allow-once / reject. */
 export function ApprovalCard({

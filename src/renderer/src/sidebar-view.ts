@@ -18,7 +18,7 @@ export interface SidebarViewState {
   collapsed: string[]
 }
 
-const VIEW_KEY = 'dsh-sidebar-view'
+const VIEW_KEY = 'coded-sidebar-view'
 
 const DEFAULT_VIEW: SidebarViewState = {
   groupBy: 'workspace',

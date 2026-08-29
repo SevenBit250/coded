@@ -23,11 +23,11 @@ import { loadSidebarView, saveSidebarView } from '../sidebar-view'
 import type { SidebarViewState } from '../sidebar-view'
 import { loadLastWorkspace, saveLastWorkspace } from '../last-workspace'
 import type { LastWorkspace } from '../last-workspace'
-import { ChatStream } from '../dsh/ChatStream'
-import { ApprovalCard, QuestionCard } from '../dsh/gates'
-import { useDshSession } from '../dsh/use-dsh-session'
-import { useDshDirectory } from '../dsh/use-dsh-directory'
-import { dsh } from '../dsh/client'
+import { ChatStream } from '../bridge/ChatStream'
+import { ApprovalCard, QuestionCard } from '../bridge/gates'
+import { useSession } from '../bridge/use-session'
+import { useDirectory } from '../bridge/use-directory'
+import { bridge } from '../bridge/client'
 import type { CodedAccessMode, CodedAgentPreset, CodedModelsSnapshot } from '@coded/bridge-protocol'
 
 /** Main screen props. */
@@ -175,7 +175,7 @@ function SidebarTopRow({
   )
 }
 
-/** Project list entry (placeholder data until the dsh host lands). */
+/** Project list entry (placeholder data until a backend host lands). */
 /** Compact relative time for session rows (harness rows use the same
  *  compact buckets: 刚刚 / {n}分钟 / {n}小时 / {n}天). */
 function relTime(minutesAgo: number): string {
@@ -494,7 +494,7 @@ function WorkspaceRow({
 }
 
 /**
- * Main workspace — ZCode-like shell (placeholder until the dsh React client
+ * Main workspace — ZCode-like shell (placeholder until the bridge React client
  * mounts here over the Plan B custom protocol): collapsible sidebar with nav
  * and projects, resizable by dragging the sash on its right edge; a welcoming
  * content column (watermark, greeting, composer), and window chrome top-right.
@@ -549,8 +549,8 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
 
   // Real roster over the CodedBridge; the active chat session follows the
   // sidebar selection.
-  const directory = useDshDirectory()
-  const session = useDshSession(selectedSession, {
+  const directory = useDirectory()
+  const session = useSession(selectedSession, {
     workspaceId: selectedProject,
     onSessionCreated: (id) => {
       directory.pinSession(id)
@@ -670,9 +670,9 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         setRenameError(`已存在名为"${title}"的工作区。`)
         return
       }
-      void dsh.renameWorkspace(renameTarget.id, title).then(directory.refresh)
+      void bridge.renameWorkspace(renameTarget.id, title).then(directory.refresh)
     } else {
-      void dsh.renameSession(renameTarget.id, title).then(directory.refresh)
+      void bridge.renameSession(renameTarget.id, title).then(directory.refresh)
     }
     setRenameTarget(null)
   }
@@ -680,7 +680,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const confirmDeleteWorkspace = (): void => {
     if (deleteTarget === null) return
     const doomed = deleteTarget
-    void dsh.deleteWorkspace(doomed.id).then(directory.refresh)
+    void bridge.deleteWorkspace(doomed.id).then(directory.refresh)
     if (doomed.sessions.some((s) => s.id === selectedSession)) {
       setSelectedSession(null)
       setModeValue(pendingRef.current?.presetId ?? null)
@@ -697,7 +697,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
 
   /** Fork: the host answers with the new session's id; select it. */
   const forkSession = (source: SessionStub): void => {
-    void dsh.forkSession(source.id).then((forkedId) => {
+    void bridge.forkSession(source.id).then((forkedId) => {
       directory.refresh()
       if (forkedId !== null) openSession(forkedId, source.agentPreset ?? null)
     })
@@ -705,7 +705,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
 
   /** Archive: non-destructive; the host frame hides the row. */
   const archiveSession = (sessionId: string): void => {
-    void dsh.archiveSession(sessionId).then(directory.refresh)
+    void bridge.archiveSession(sessionId).then(directory.refresh)
     if (selectedSession === sessionId) {
       setSelectedSession(null)
       setModeValue(pendingRef.current?.presetId ?? null)
@@ -783,20 +783,20 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     let cancelled = false
     const fetchPresets = async (): Promise<void> => {
       try {
-        const nextCaps = await dsh.capabilities()
+        const nextCaps = await bridge.capabilities()
         if (cancelled) return
         setCaps(nextCaps)
         if (!nextCaps.includes('presets')) return
-        const roster = await dsh.listPresets()
+        const roster = await bridge.listPresets()
         if (!cancelled) setPresets(roster)
       } catch (error: unknown) {
         console.log(`[composer] presets load failed: ${String(error)}`)
       }
     }
-    void dsh.status().then((s) => {
+    void bridge.status().then((s) => {
       if (s === 'bridge-connected') void fetchPresets()
     })
-    const off = dsh.onStatus((s) => {
+    const off = bridge.onStatus((s) => {
       if (s === 'bridge-connected') void fetchPresets()
     })
     return () => {
@@ -835,7 +835,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     // bridge (re)connects — a mount-time fetch would race the connection.
     let stale = false
     const load = (): void => {
-      void dsh
+      void bridge
         .listModels(selectedSession ?? undefined)
         .then((snapshot) => {
           if (!stale) setModels(snapshot)
@@ -844,10 +844,10 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           console.log(`[composer] models load failed: ${String(error)}`)
         })
     }
-    void dsh.status().then((s) => {
+    void bridge.status().then((s) => {
       if (s === 'bridge-connected' && !stale) load()
     })
-    const off = dsh.onStatus((s) => {
+    const off = bridge.onStatus((s) => {
       if (s === 'bridge-connected' && !stale) load()
     })
     return () => {
@@ -864,7 +864,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     const fetchModes = (): void => {
       if (fetched) return
       fetched = true
-      void dsh
+      void bridge
         .permissionModes()
         .then((p) => {
           if (!cancelled) setAccessModes(p.modes)
@@ -874,10 +874,10 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           console.log(`[composer] permission modes load failed: ${String(error)}`)
         })
     }
-    void dsh.status().then((s) => {
+    void bridge.status().then((s) => {
       if (s === 'bridge-connected') fetchModes()
     })
-    const off = dsh.onStatus((s) => {
+    const off = bridge.onStatus((s) => {
       if (s === 'bridge-connected') fetchModes()
     })
     return () => {
@@ -893,7 +893,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     if (pending === null) return
     pendingRef.current = null
     if (pending.presetId !== undefined) {
-      void dsh
+      void bridge
         .selectPreset(sessionId, pending.presetId)
         // Re-baseline so the roster row carries the applied preset — the
         // session.added row predates it (staged presets apply post-create).
@@ -903,12 +903,12 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         })
     }
     if (pending.modeId !== undefined) {
-      void dsh.setPermissionMode(sessionId, pending.modeId).catch((error: unknown) => {
+      void bridge.setPermissionMode(sessionId, pending.modeId).catch((error: unknown) => {
         console.log(`[composer] pending permission set failed: ${String(error)}`)
       })
     }
     if (pending.provider !== undefined && pending.model !== undefined) {
-      void dsh
+      void bridge
         .selectModel(sessionId, pending.provider, pending.model, pending.reasoningEffort)
         .catch((error: unknown) => {
           console.log(`[composer] pending model select failed: ${String(error)}`)
@@ -961,14 +961,14 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
       )
       return
     }
-    void dsh
+    void bridge
       .selectModel(
         selectedSession,
         selection.provider,
         selection.model,
         selection.reasoningEffort,
       )
-      .then(() => dsh.listModels(selectedSession))
+      .then(() => bridge.listModels(selectedSession))
       .then((snapshot) => setModels(snapshot))
       .catch((error: unknown) => {
         console.log(`[composer] model select failed: ${String(error)}`)
@@ -1012,7 +1012,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
       pendingRef.current = { ...pendingRef.current, modeId }
       return
     }
-    void dsh.setPermissionMode(selectedSession, modeId).catch((error: unknown) => {
+    void bridge.setPermissionMode(selectedSession, modeId).catch((error: unknown) => {
       console.log(`[composer] permission set failed: ${String(error)}`)
     })
   }
@@ -1028,7 +1028,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
       pendingRef.current = { ...pendingRef.current, presetId }
       return
     }
-    void dsh
+    void bridge
       .selectPreset(selectedSession, presetId)
       .then(() => directory.refresh())
       .catch((error: unknown) => {
@@ -1123,11 +1123,11 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         <div className="anchor-right">
           {/* Windows draws its own caption buttons via titleBarOverlay;
               other platforms get the uibase chrome with IPC wired here. */}
-          {window.dshDesktop.platform !== 'win32' && (
+          {window.coded.platform !== 'win32' && (
             <WindowControls
-              onMinimize={() => window.dshDesktop.minimize()}
-              onMaximize={() => window.dshDesktop.maximize()}
-              onClose={() => window.dshDesktop.close()}
+              onMinimize={() => window.coded.minimize()}
+              onMaximize={() => window.coded.maximize()}
+              onClose={() => window.coded.close()}
             />
           )}
         </div>
@@ -1360,7 +1360,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 onChange={setSelectedProject}
                 actions={PROJECT_ACTIONS}
                 onAction={(id) => {
-                  // TODO(dsh wiring): open-folder -> pickWorkspace; remote -> connect flow.
+                  // TODO(backend wiring): open-folder -> pickWorkspace; remote -> connect flow.
                   void id
                 }}
                 noneLabel="不在项目中工作"
@@ -1421,7 +1421,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 <Dropdown
                   actions={CONTEXT_ACTIONS}
                   onAction={(id) => {
-                    // TODO(dsh wiring): attach -> file picker; at-context ->
+                    // TODO(backend wiring): attach -> file picker; at-context ->
                     // insert '@' into the composer; slash-commands -> palette.
                     void id
                   }}

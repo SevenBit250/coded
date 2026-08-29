@@ -1,11 +1,11 @@
 /**
  * The typed surface the preload bridge exposes to the renderer as
- * `window.dshDesktop`. Pure types only — consumed by the preload
+ * `window.coded`. Pure types only — consumed by the preload
  * implementation and by the renderer's global declaration.
  */
 
-/** Lifecycle of the harness runtime + CodedBridge, as seen from the shell. */
-export type DshBridgeStatus =
+/** Lifecycle of the backend runtime + CodedBridge, as seen from the shell. */
+export type BridgeStatus =
   | 'starting'
   | 'runtime-ready'
   | 'bridge-connected'
@@ -14,7 +14,7 @@ export type DshBridgeStatus =
   | 'failed'
 
 /** Callbacks for one open downstream stream (mux/host frames). */
-export interface DshStreamHandlers {
+export interface BridgeStreamHandlers {
   /** One downstream frame: a ServerRequest full-form document. */
   onFrame: (envelope: unknown) => void
   /** The adapter confirmed the subscription is established. */
@@ -23,12 +23,12 @@ export interface DshStreamHandlers {
   onEnd?: (reason?: string) => void
 }
 
-/** CodedBridge face: renderer ↔ main ↔ harness adapter (via local pipe). */
-export interface DshBridgeSurface {
+/** CodedBridge face: renderer ↔ main ↔ backend adapter (via local pipe). */
+export interface BridgeSurface {
   /** Current lifecycle status (async: resolved over IPC). */
-  status: () => Promise<DshBridgeStatus>
+  status: () => Promise<BridgeStatus>
   /** Subscribe to status changes; returns the unsubscribe function. */
-  onStatus: (cb: (status: DshBridgeStatus) => void) => () => void
+  onStatus: (cb: (status: BridgeStatus) => void) => () => void
   /**
    * Semantic-surface capabilities the adapter declared at handshake (§11,
    * e.g. 'presets'). Empty while the bridge is down; re-resolved per epoch.
@@ -44,12 +44,12 @@ export interface DshBridgeSurface {
    * shell-side stream id once dispatched (open confirmation arrives through
    * handlers.onOpen).
    */
-  openStream: (stream: 'events', payload: unknown, handlers: DshStreamHandlers) => Promise<number>
+  openStream: (stream: 'events', payload: unknown, handlers: BridgeStreamHandlers) => Promise<number>
   /** Shell-side cancellation of an open stream. */
   abortStream: (id: number) => void
 }
 
-export interface DshDesktopBridge {
+export interface CodedDesktop {
   /** Shell version string shown in about/startup contexts. */
   version: string
   /** Host platform of the running shell (win32, darwin, linux, ...). */
@@ -67,5 +67,5 @@ export interface DshDesktopBridge {
   /** Renderer signals the startup animation finished -> main view. */
   transition: () => void
   /** Harness runtime + bridge surface. */
-  dsh: DshBridgeSurface
+  bridge: BridgeSurface
 }

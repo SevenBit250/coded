@@ -8,7 +8,7 @@ if (container === null) throw new Error('missing #root mount point')
 
 // Platform fact for platform-conditional chrome (system caption buttons on
 // Windows reserve the top-right corner; CSS keys off this attribute).
-document.documentElement.dataset.platform = window.dshDesktop.platform
+document.documentElement.dataset.platform = window.coded.platform
 
 createRoot(container).render(
   <React.StrictMode>

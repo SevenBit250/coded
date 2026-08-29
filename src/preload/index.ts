@@ -1,16 +1,16 @@
 /**
  * Preload bridge — the only surface the isolated renderer sees of the main
- * process. Everything is namespaced under `window.dshDesktop`; nothing else is
+ * process. Everything is namespaced under `window.coded`; nothing else is
  * exposed (contextIsolation on, nodeIntegration off). Channel names come from
  * `../shared/ipc` so this side cannot drift from the main-process handlers.
  */
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../shared/ipc'
-import type { DshBridgeStatus, DshDesktopBridge, DshStreamHandlers } from '../shared/bridge'
+import type { BridgeStatus, CodedDesktop, BridgeStreamHandlers } from '../shared/bridge'
 
 /** Renderer-side stream handler registry, keyed by shell-side stream id. */
-const dshStreams = new Map<number, DshStreamHandlers>()
-const statusListeners = new Set<(status: DshBridgeStatus) => void>()
+const streamItems = new Map<number, BridgeStreamHandlers>()
+const statusListeners = new Set<(status: BridgeStatus) => void>()
 
 /**
  * The main side flushes its pre-id frame buffer BEFORE the streamOpen invoke
@@ -23,7 +23,7 @@ type PendingStreamItem =
   | { kind: 'end'; reason?: string }
 const pendingStreamItems = new Map<number, PendingStreamItem[]>()
 
-function applyStreamItem(id: number, handlers: DshStreamHandlers, item: PendingStreamItem): void {
+function applyStreamItem(id: number, handlers: BridgeStreamHandlers, item: PendingStreamItem): void {
   switch (item.kind) {
     case 'frame':
       handlers.onFrame?.(item.envelope)
@@ -32,14 +32,14 @@ function applyStreamItem(id: number, handlers: DshStreamHandlers, item: PendingS
       handlers.onOpen?.()
       return
     case 'end':
-      dshStreams.delete(id)
+      streamItems.delete(id)
       handlers.onEnd?.(item.reason)
       return
   }
 }
 
 function dispatchStreamItem(id: number, item: PendingStreamItem): void {
-  const handlers = dshStreams.get(id)
+  const handlers = streamItems.get(id)
   if (handlers === undefined) {
     const list = pendingStreamItems.get(id)
     if (list !== undefined) list.push(item)
@@ -55,20 +55,20 @@ function dispatchStreamItem(id: number, item: PendingStreamItem): void {
   applyStreamItem(id, handlers, item)
 }
 
-ipcRenderer.on(IPC.dsh.frame, (_event, payload: { id: number; envelope: unknown }) => {
+ipcRenderer.on(IPC.bridge.frame, (_event, payload: { id: number; envelope: unknown }) => {
   dispatchStreamItem(payload.id, { kind: 'frame', envelope: payload.envelope })
 })
-ipcRenderer.on(IPC.dsh.streamReady, (_event, payload: { id: number }) => {
+ipcRenderer.on(IPC.bridge.streamReady, (_event, payload: { id: number }) => {
   dispatchStreamItem(payload.id, { kind: 'ready' })
 })
-ipcRenderer.on(IPC.dsh.streamEnd, (_event, payload: { id: number; reason?: string }) => {
+ipcRenderer.on(IPC.bridge.streamEnd, (_event, payload: { id: number; reason?: string }) => {
   dispatchStreamItem(payload.id, { kind: 'end', reason: payload.reason })
 })
-ipcRenderer.on(IPC.dsh.status, (_event, payload: { status: DshBridgeStatus }) => {
+ipcRenderer.on(IPC.bridge.status, (_event, payload: { status: BridgeStatus }) => {
   statusListeners.forEach((cb) => cb(payload.status))
 })
 
-const bridge: DshDesktopBridge = {
+const bridge: CodedDesktop = {
   version: '0.1.0',
   platform: process.platform,
   minimize: () => ipcRenderer.send(IPC.window.minimize),
@@ -79,19 +79,19 @@ const bridge: DshDesktopBridge = {
   ready: () => ipcRenderer.send(IPC.shell.ready),
   /** Renderer signals the startup animation finished -> main view. */
   transition: () => ipcRenderer.send(IPC.shell.transition),
-  dsh: {
-    status: () => ipcRenderer.invoke(IPC.dsh.statusGet) as Promise<DshBridgeStatus>,
-    capabilities: () => ipcRenderer.invoke(IPC.dsh.capabilitiesGet) as Promise<string[]>,
+  bridge: {
+    status: () => ipcRenderer.invoke(IPC.bridge.statusGet) as Promise<BridgeStatus>,
+    capabilities: () => ipcRenderer.invoke(IPC.bridge.capabilitiesGet) as Promise<string[]>,
     onStatus: (cb) => {
       statusListeners.add(cb)
       return () => {
         statusListeners.delete(cb)
       }
     },
-    invoke: (method, payload) => ipcRenderer.invoke(IPC.dsh.invoke, method, payload),
-    openStream: async (stream, payload, handlers: DshStreamHandlers) => {
-      const id = (await ipcRenderer.invoke(IPC.dsh.streamOpen, stream, payload)) as number
-      dshStreams.set(id, handlers)
+    invoke: (method, payload) => ipcRenderer.invoke(IPC.bridge.invoke, method, payload),
+    openStream: async (stream, payload, handlers: BridgeStreamHandlers) => {
+      const id = (await ipcRenderer.invoke(IPC.bridge.streamOpen, stream, payload)) as number
+      streamItems.set(id, handlers)
       // Replay anything that beat the invoke response (see pendingStreamItems).
       const pending = pendingStreamItems.get(id)
       if (pending !== undefined) {
@@ -101,10 +101,10 @@ const bridge: DshDesktopBridge = {
       return id
     },
     abortStream: (id) => {
-      dshStreams.delete(id)
-      ipcRenderer.send(IPC.dsh.streamAbort, id)
+      streamItems.delete(id)
+      ipcRenderer.send(IPC.bridge.streamAbort, id)
     },
   },
 }
 
-contextBridge.exposeInMainWorld('dshDesktop', bridge)
+contextBridge.exposeInMainWorld('coded', bridge)

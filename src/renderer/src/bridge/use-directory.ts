@@ -1,5 +1,5 @@
 /**
- * useDshDirectory — the sidebar's real roster over the CodedBridge: workspace
+ * useDirectory — the sidebar's real roster over the CodedBridge: workspace
  * + session baselines from unary calls, kept live by the semantic events
  * stream (§2.3): session added/removed/phase/title, agent errors, workspace
  * changes, and the archived set.
@@ -9,8 +9,8 @@
  * `session.title` event keeps titles live without a baseline re-pull.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { dsh } from './client'
-import type { CodedSemanticEvent, CodedSession, CodedTranscriptItem, CodedWorkspace, DshStatus } from './client'
+import { bridge } from './client'
+import type { CodedSemanticEvent, CodedSession, CodedTranscriptItem, CodedWorkspace, BridgeStatus } from './client'
 
 export interface DirectorySession {
   id: string
@@ -31,8 +31,8 @@ export interface DirectoryWorkspace {
   sessions: DirectorySession[]
 }
 
-export interface DshDirectory {
-  status: DshStatus
+export interface CodedDirectory {
+  status: BridgeStatus
   workspaces: DirectoryWorkspace[]
   /** Re-pull both baselines (after mutations the host does not echo). */
   refresh: () => void
@@ -93,8 +93,8 @@ function compose(
   }))
 }
 
-export function useDshDirectory(): DshDirectory {
-  const [status, setStatus] = useState<DshStatus>('starting')
+export function useDirectory(): CodedDirectory {
+  const [status, setStatus] = useState<BridgeStatus>('starting')
   const [workspaces, setWorkspaces] = useState<DirectoryWorkspace[]>([])
   const workspacesRef = useRef<CodedWorkspace[]>([])
   const sessionsRef = useRef(new Map<string, DirectorySession>())
@@ -119,7 +119,7 @@ export function useDshDirectory(): DshDirectory {
 
   /** Baseline pull: workspace roster + session list + archived set. */
   const refresh = useCallback((): void => {
-    void Promise.all([dsh.listWorkspaces(), dsh.listSessions()])
+    void Promise.all([bridge.listWorkspaces(), bridge.listSessions()])
       .then(([ws, sessions]) => {
         workspacesRef.current = ws.workspaces
         archivedRef.current = new Set(ws.archivedSessionIds)
@@ -127,7 +127,7 @@ export function useDshDirectory(): DshDirectory {
         publish()
       })
       .catch((error: unknown) => {
-        console.log(`[dsh-directory] baseline failed: ${String(error)}`)
+        console.log(`[directory] baseline failed: ${String(error)}`)
       })
   }, [publish])
 
@@ -232,13 +232,13 @@ export function useDshDirectory(): DshDirectory {
   useEffect(() => {
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
-    let lastStatus: DshStatus = 'starting'
+    let lastStatus: BridgeStatus = 'starting'
     /** Baseline + events stream, once per bridge-connected epoch. */
     const connect = (): void => {
       refresh()
       if (subscribedRef.current) return
       subscribedRef.current = true
-      void dsh
+      void bridge
         .openEvents(
           {
             onEvent: (event) => {
@@ -259,12 +259,12 @@ export function useDshDirectory(): DshDirectory {
           { types: EVENT_TYPES },
         )
         .catch((error: unknown) => {
-          console.log(`[dsh-directory] events open failed: ${String(error)}`)
+          console.log(`[directory] events open failed: ${String(error)}`)
           subscribedRef.current = false
         })
     }
 
-    const consider = (next: DshStatus): void => {
+    const consider = (next: BridgeStatus): void => {
       if (cancelled) return
       lastStatus = next
       setStatus(next)
@@ -272,8 +272,8 @@ export function useDshDirectory(): DshDirectory {
       if (next === 'bridge-disconnected') subscribedRef.current = false
     }
 
-    void dsh.status().then((current) => consider(current)).catch(() => {})
-    const off = dsh.onStatus(consider)
+    void bridge.status().then((current) => consider(current)).catch(() => {})
+    const off = bridge.onStatus(consider)
     return () => {
       cancelled = true
       if (retryTimer !== null) clearTimeout(retryTimer)

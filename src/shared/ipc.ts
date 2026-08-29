@@ -16,26 +16,26 @@ export const IPC = {
     ready: 'shell:ready',
     transition: 'shell:transition',
   },
-  /** CodedBridge face: renderer ↔ main ↔ harness adapter (via local pipe). */
-  dsh: {
-    /** invoke(method, payload) → harness ApiProxy unary response (full form). */
-    invoke: 'dsh:invoke',
+  /** CodedBridge face: renderer ↔ main ↔ backend adapter (via local pipe). */
+  bridge: {
+    /** invoke(method, payload) → backend adapter unary response (full form). */
+    invoke: 'bridge:invoke',
     /** invoke(name, payload) → stream id; frames arrive on `frame`. */
-    streamOpen: 'dsh:stream-open',
+    streamOpen: 'bridge:stream-open',
     /** send(streamId): shell-side cancellation of an open stream. */
-    streamAbort: 'dsh:stream-abort',
+    streamAbort: 'bridge:stream-abort',
     /** event {id, envelope}: one downstream frame (ServerRequest full form). */
-    frame: 'dsh:frame',
+    frame: 'bridge:frame',
     /** event {id}: the adapter confirmed the stream is established. */
-    streamReady: 'dsh:stream-ready',
+    streamReady: 'bridge:stream-ready',
     /** event {id, reason?}: the stream finished on the adapter side. */
-    streamEnd: 'dsh:stream-end',
+    streamEnd: 'bridge:stream-end',
     /** invoke() → current lifecycle status (initial read; changes push). */
-    statusGet: 'dsh:status-get',
+    statusGet: 'bridge:status-get',
     /** event {status}: runtime/bridge lifecycle broadcast. */
-    status: 'dsh:status',
+    status: 'bridge:status',
     /** invoke() → adapter hello capabilities of the current bridge epoch. */
-    capabilitiesGet: 'dsh:capabilities-get',
+    capabilitiesGet: 'bridge:capabilities-get',
   },
 } as const
 

@@ -1,5 +1,5 @@
 /**
- * dsh face wiring (main process): exposes the CodedBridge to the renderer
+ * Bridge service (main process): exposes the CodedBridge to the renderer
  * over IPC and owns the runtime + bridge lifecycle.
  *
  * Flow: spawn the harness CLI as a pure Node child (ELECTRON_RUN_AS_NODE, so
@@ -10,48 +10,49 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { resolve } from 'node:path'
 import { IPC } from '../shared/ipc'
-import type { DshBridgeStatus, DshStreamHandlers } from '../shared/bridge'
+import type { BridgeStatus, BridgeStreamHandlers } from '../shared/bridge'
 import { BridgeClient } from './bridge-client'
 import type { StreamHandlers } from './bridge-client'
 import { DshRuntime } from './dsh-runtime'
+import { logBridge, logDsh, logService } from './logger'
 
 let runtime: DshRuntime | null = null
 let bridge: BridgeClient | null = null
 let runtimeStatus: 'starting' | 'ready' | 'exited' | 'failed' = 'starting'
 let bridgeStatus: 'connecting' | 'connected' | 'disconnected' | 'stopped' = 'disconnected'
-let dshStatusValue: DshBridgeStatus = 'starting'
-const statusListeners = new Set<(status: DshBridgeStatus) => void>()
+let statusValue: BridgeStatus = 'starting'
+const statusListeners = new Set<(status: BridgeStatus) => void>()
 
 /** Derived lifecycle: runtime gates everything, bridge rides on top of it. */
 function recomputeStatus(): void {
-  let next: DshBridgeStatus
+  let next: BridgeStatus
   if (runtimeStatus === 'failed') next = 'failed'
   else if (runtimeStatus === 'exited') next = 'runtime-exited'
   else if (runtimeStatus === 'starting') next = 'starting'
   else next = bridgeStatus === 'connected' ? 'bridge-connected' : 'bridge-disconnected'
-  if (next === dshStatusValue) return
-  dshStatusValue = next
-  console.log(`[dsh-face] status -> ${next}`)
+  if (next === statusValue) return
+  statusValue = next
+  logService.info(`status -> ${next}`)
   for (const cb of statusListeners) cb(next)
   for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(IPC.dsh.status, { status: next })
+    if (!win.isDestroyed()) win.webContents.send(IPC.bridge.status, { status: next })
   }
 }
 
-function registerDshIpc(): void {
-  ipcMain.handle(IPC.dsh.statusGet, () => dshStatusValue)
-  ipcMain.handle(IPC.dsh.capabilitiesGet, () => bridge?.capabilities() ?? [])
-  ipcMain.handle(IPC.dsh.invoke, (_event, method: string, payload: unknown) => {
+function registerBridgeIpc(): void {
+  ipcMain.handle(IPC.bridge.statusGet, () => statusValue)
+  ipcMain.handle(IPC.bridge.capabilitiesGet, () => bridge?.capabilities() ?? [])
+  ipcMain.handle(IPC.bridge.invoke, (_event, method: string, payload: unknown) => {
     if (bridge === null) throw new Error('bridge not started')
     return bridge.call(method, payload).catch((error: unknown) => {
-      console.log(`[dsh-face] invoke ${method} failed: ${String(error)}`)
+      logService.warn(`invoke ${method} failed: ${String(error)}`)
       throw error
     })
   })
 
   // Frames may arrive before the openStream invoke resolves back to the
   // renderer (the adapter replays fast), so buffer until the id is known.
-  ipcMain.handle(IPC.dsh.streamOpen, (event, stream: 'events', payload: unknown) => {
+  ipcMain.handle(IPC.bridge.streamOpen, (event, stream: 'events', payload: unknown) => {
     const sender = event.sender
     let id = -1
     const buffered: { id: number; envelope: unknown }[] = []
@@ -61,67 +62,36 @@ function registerDshIpc(): void {
     const handlers: StreamHandlers = {
       onFrame: (envelope) => {
         if (id === -1) buffered.push({ id: -1, envelope })
-        else deliver(IPC.dsh.frame, { id, envelope })
+        else deliver(IPC.bridge.frame, { id, envelope })
       },
       onOpen: () => {
         if (id === -1) buffered.push({ id: -1, envelope: { type: 'bridge/stream-ready' } })
-        else deliver(IPC.dsh.streamReady, { id })
+        else deliver(IPC.bridge.streamReady, { id })
       },
       onEnd: (reason) => {
-        console.log(`[dsh-face] stream ${stream} ended${reason !== undefined && reason !== '' ? `: ${reason}` : ''}`)
-        if (id !== -1) deliver(IPC.dsh.streamEnd, { id, reason })
+        logService.info(`stream ${stream} ended${reason !== undefined && reason !== '' ? `: ${reason}` : ''}`)
+        if (id !== -1) deliver(IPC.bridge.streamEnd, { id, reason })
       },
     }
-    console.log(`[dsh-face] streamOpen ${stream}`)
+    logService.info(`streamOpen ${stream}`)
     if (bridge === null) throw new Error('bridge not started')
     return bridge.openStream(stream, payload, handlers).then((streamId) => {
       id = streamId
       for (const item of buffered) {
         if (item.envelope !== null && typeof item.envelope === 'object' && (item.envelope as {type?: string}).type === 'bridge/stream-ready') {
-          deliver(IPC.dsh.streamReady, { id })
+          deliver(IPC.bridge.streamReady, { id })
         } else {
-          deliver(IPC.dsh.frame, { id, envelope: item.envelope })
+          deliver(IPC.bridge.frame, { id, envelope: item.envelope })
         }
       }
       return id
     })
   })
 
-  ipcMain.on(IPC.dsh.streamAbort, (_event, id: number) => {
-    console.log(`[dsh-face] streamAbort ${String(id)}`)
+  ipcMain.on(IPC.bridge.streamAbort, (_event, id: number) => {
+    logService.info(`streamAbort ${String(id)}`)
     bridge?.abortStream(id)
   })
-}
-
-/** Renderer-side status subscription (push-based, change-only). */
-export function onDshStatus(cb: (status: DshBridgeStatus) => void): () => void {
-  statusListeners.add(cb)
-  cb(dshStatusValue)
-  return () => {
-    statusListeners.delete(cb)
-  }
-}
-
-export function currentDshStatus(): DshBridgeStatus {
-  return dshStatusValue
-}
-
-export function invokeDsh(method: string, payload: unknown): Promise<unknown> {
-  if (bridge === null) return Promise.reject(new Error('bridge not started'))
-  return bridge.call(method, payload)
-}
-
-export function openDshStream(
-  stream: 'events',
-  payload: unknown,
-  handlers: DshStreamHandlers,
-): Promise<number> {
-  if (bridge === null) return Promise.reject(new Error('bridge not started'))
-  return bridge.openStream(stream, payload, handlers as StreamHandlers)
-}
-
-export function abortDshStream(id: number): void {
-  bridge?.abortStream(id)
 }
 
 /** Harness root: env override wins; dev default sits beside this repo. */
@@ -133,8 +103,8 @@ function harnessRoot(): string {
 
 /** Start the harness runtime, then the bridge. Never throws: failures land
  *  in the status broadcast for the renderer to present. */
-export function startDshFace(): void {
-  registerDshIpc()
+export function startBridgeService(): void {
+  registerBridgeIpc()
   // The bridge scope is minted here once per app run (single source of
   // truth): the runtime child learns it through env, the bridge client
   // connects to the same name. Per-run names sidestep the Windows
@@ -146,7 +116,7 @@ export function startDshFace(): void {
     // listening line, not a web URL.
     args: ['--profile', 'coded'],
     extraEnv: { DSH_CODED_BRIDGE_SCOPE: scope },
-    log: (line) => console.log(`[dsh] ${line}`),
+    log: (line) => logDsh.info(line),
   })
   runtime.on('status', (status: 'starting' | 'ready' | 'exited' | 'failed') => {
     runtimeStatus = status
@@ -160,14 +130,14 @@ export function startDshFace(): void {
         bridgeStatus = status
         recomputeStatus()
       },
-      log: (message) => console.log(`[dsh-bridge] ${message}`),
+      log: (message) => logBridge.info(message),
     })
     bridge.start()
   })
 }
 
 /** Idempotent teardown for app quit: stop the bridge, then the process tree. */
-export async function stopDshFace(): Promise<void> {
+export async function stopBridgeService(): Promise<void> {
   await bridge?.stop()
   await runtime?.stop()
 }

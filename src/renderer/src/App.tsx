@@ -13,7 +13,7 @@ type ShellPhase = 'startup' | 'main'
 
 /**
  * Placeholder for the real readiness gate. The startup screen exists to wait
- * for dsh to launch; until the harness transport is wired, a fixed hold stands
+ * for the backend to launch; until the harness transport is wired, a fixed hold stands
  * in for that signal — swap this timeout for the ready event later.
  */
 const BOOT_HOLD_MS = 1400
@@ -41,7 +41,7 @@ const HOLD_ON_STARTUP = false
  *
  * Sequence (matches the Plan B chrome spec):
  *  1. `startup` — the frosted-glass screen mounts first and reports `ready`.
- *     It stands in for dsh launching (BOOT_HOLD_MS placeholder above); the
+ *     It stands in for the backend launching (BOOT_HOLD_MS placeholder above); the
  *     workspace pre-mounts underneath partway through the hold.
  *  2. At the end of the hold the glass BACKDROP fades to the workspace color
  *     (scene keeps drifting), dwells white for UNVEIL_DELAY_MS.
@@ -71,14 +71,14 @@ export function App(): ReactElement {
     if (!whitening) return
     const t = setTimeout(() => {
       setPhase('main')
-      void window.dshDesktop.transition()
+      void window.coded.transition()
     }, WHITEN_MS + UNVEIL_DELAY_MS)
     return () => clearTimeout(t)
   }, [whitening])
 
   useEffect(() => {
     // Signal first paint so the main process can show the window.
-    window.dshDesktop.ready()
+    window.coded.ready()
     if (HOLD_ON_STARTUP) return
     const timer = setTimeout(beginTransition, BOOT_HOLD_MS)
     return () => clearTimeout(timer)

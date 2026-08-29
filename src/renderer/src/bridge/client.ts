@@ -1,6 +1,6 @@
 /**
  * CodedBridge client for the renderer — typed helpers over
- * `window.dshDesktop.dsh` (see shared/bridge.ts). Deliberately NOT a subclass
+ * `window.coded.bridge` (see shared/bridge.ts). Deliberately NOT a subclass
  * of any harness client class: the renderer speaks only the CodedBridge
  * private protocol, so harness upgrades cannot reach this code.
  *
@@ -37,9 +37,9 @@ export type {
 } from '@coded/bridge-protocol'
 
 /** Lifecycle status pushed by the shell (see shared/bridge.ts). */
-export type DshStatus = import('../../../shared/bridge').DshBridgeStatus
+export type BridgeStatus = import('../../../shared/bridge').BridgeStatus
 
-/** AskUserQuestionItem (dsh-user-questions) as it crosses the wire. */
+/** AskUserQuestionItem (the backend user-questions preset) as it crosses the wire. */
 export interface QuestionItem {
   id: string
   question: string
@@ -65,21 +65,21 @@ export type GateAnswer =
 
 /** ---- Directory domain (§2.1/§2.2): sessions/workspaces listing. ---- */
 
-export const dsh = {
-  status: (): Promise<DshStatus> => window.dshDesktop.dsh.status(),
+export const bridge = {
+  status: (): Promise<BridgeStatus> => window.coded.bridge.status(),
 
-  onStatus: (cb: (status: DshStatus) => void): (() => void) =>
-    window.dshDesktop.dsh.onStatus(cb),
+  onStatus: (cb: (status: BridgeStatus) => void): (() => void) =>
+    window.coded.bridge.onStatus(cb),
 
   /** Backend identity (health surfaces, cwd fallback). */
   async describe(): Promise<CodedDescribe> {
-    return (await window.dshDesktop.dsh.invoke('coded.describe', {})) as CodedDescribe
+    return (await window.coded.bridge.invoke('coded.describe', {})) as CodedDescribe
   },
 
   /** First workspace path, or the user home when none is registered. */
   async defaultCwd(): Promise<string> {
     try {
-      const value = (await window.dshDesktop.dsh.invoke('coded.workspace.list', {})) as {
+      const value = (await window.coded.bridge.invoke('coded.workspace.list', {})) as {
         workspaces: CodedWorkspace[]
       }
       const first = value.workspaces[0]?.path
@@ -87,13 +87,13 @@ export const dsh = {
     } catch {
       // Fall through to home below.
     }
-    const { home } = await dsh.describe()
+    const { home } = await bridge.describe()
     return home
   },
 
   /** Full workspace roster (roster order + owned-session order) + archived set. */
   async listWorkspaces(): Promise<{ workspaces: CodedWorkspace[]; archivedSessionIds: string[] }> {
-    return (await window.dshDesktop.dsh.invoke('coded.workspace.list', {})) as {
+    return (await window.coded.bridge.invoke('coded.workspace.list', {})) as {
       workspaces: CodedWorkspace[]
       archivedSessionIds: string[]
     }
@@ -101,7 +101,7 @@ export const dsh = {
 
   /** Every session as a semantic roster row (title/phase/ownership filled). */
   async listSessions(): Promise<CodedSession[]> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.session.list', {})) as {
+    const value = (await window.coded.bridge.invoke('coded.session.list', {})) as {
       sessions: CodedSession[]
     }
     return value.sessions
@@ -109,28 +109,28 @@ export const dsh = {
 
   /** Tail page of a session's transcript, as semantic items. */
   async sessionHistory(sessionId: string): Promise<CodedHistoryPage> {
-    return (await window.dshDesktop.dsh.invoke('coded.session.history', { sessionId })) as CodedHistoryPage
+    return (await window.coded.bridge.invoke('coded.session.history', { sessionId })) as CodedHistoryPage
   },
 
   async renameSession(sessionId: string, title: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.session.rename', { sessionId, title })
+    await window.coded.bridge.invoke('coded.session.rename', { sessionId, title })
   },
 
   /** Fork a session; resolves with the new session's id when the backend says. */
   async forkSession(sessionId: string): Promise<string | null> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.session.fork', { sessionId })) as {
+    const value = (await window.coded.bridge.invoke('coded.session.fork', { sessionId })) as {
       sessionId?: string
     }
     return value.sessionId ?? null
   },
 
   async archiveSession(sessionId: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.session.archive', { sessionId })
+    await window.coded.bridge.invoke('coded.session.archive', { sessionId })
   },
 
   /** Abort the session's running turn. Resolves with the carrier receipt. */
   async cancelSession(sessionId: string): Promise<{ accepted: boolean }> {
-    return (await window.dshDesktop.dsh.invoke('coded.session.cancel', { sessionId })) as {
+    return (await window.coded.bridge.invoke('coded.session.cancel', { sessionId })) as {
       accepted: boolean
     }
   },
@@ -138,7 +138,7 @@ export const dsh = {
   /** Remove one queued message (S2.3 surface; steer/edit come later). */
   /** Remove one queued message (the next queue.changed snapshot confirms). */
   async removeQueuedMessage(sessionId: string, itemId: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.queue.remove', { sessionId, itemId })
+    await window.coded.bridge.invoke('coded.queue.remove', { sessionId, itemId })
   },
 
   /** ---- Semantic domain (M1 pilot): coded.* methods only below. Payloads
@@ -151,7 +151,7 @@ export const dsh = {
    * selection + host-wide catalog) for pre-session surfaces.
    */
   async listModels(sessionId?: string): Promise<CodedModelsSnapshot> {
-    return (await window.dshDesktop.dsh.invoke('coded.models.list', {
+    return (await window.coded.bridge.invoke('coded.models.list', {
       ...(sessionId === undefined ? {} : { sessionId }),
     })) as CodedModelsSnapshot
   },
@@ -163,7 +163,7 @@ export const dsh = {
     model: string,
     reasoningEffort?: string,
   ): Promise<CodedModelSelection> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.models.select', {
+    const value = (await window.coded.bridge.invoke('coded.models.select', {
       sessionId,
       provider,
       model,
@@ -174,17 +174,17 @@ export const dsh = {
 
   /** The deployment's permission modes. */
   async permissionModes(): Promise<CodedPermissionModes> {
-    return (await window.dshDesktop.dsh.invoke('coded.permission.modes', {})) as CodedPermissionModes
+    return (await window.coded.bridge.invoke('coded.permission.modes', {})) as CodedPermissionModes
   },
 
   /** Adapter-declared semantic capabilities of the current bridge epoch. */
   capabilities(): Promise<string[]> {
-    return window.dshDesktop.dsh.capabilities()
+    return window.coded.bridge.capabilities()
   },
 
   /** The deployment's agent-preset roster (empty = none composed). */
   async listPresets(): Promise<CodedAgentPreset[]> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.presets.list', {})) as {
+    const value = (await window.coded.bridge.invoke('coded.presets.list', {})) as {
       presets: CodedAgentPreset[]
     }
     return value.presets
@@ -192,7 +192,7 @@ export const dsh = {
 
   /** Switch a blank session's agent preset; resolves with the resolved id. */
   async selectPreset(sessionId: string, presetId: string): Promise<string | null> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.presets.select', {
+    const value = (await window.coded.bridge.invoke('coded.presets.select', {
       sessionId,
       presetId,
     })) as { agentPreset?: string }
@@ -201,16 +201,16 @@ export const dsh = {
 
   /** Switch a session's permission mode. */
   async setPermissionMode(sessionId: string, modeId: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.permission.set', { sessionId, modeId })
+    await window.coded.bridge.invoke('coded.permission.set', { sessionId, modeId })
   },
 
   async renameWorkspace(workspaceId: string, title: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.workspace.rename', { workspaceId, title })
+    await window.coded.bridge.invoke('coded.workspace.rename', { workspaceId, title })
   },
 
   /** Detach a workspace from the roster (its folder and sessions remain). */
   async deleteWorkspace(workspaceId: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.workspace.delete', { workspaceId })
+    await window.coded.bridge.invoke('coded.workspace.delete', { workspaceId })
   },
 
   /** Create a session; roots at a workspace when given, else at cwd. */
@@ -219,7 +219,7 @@ export const dsh = {
     cwd?: string
     presetId?: string
   }): Promise<string> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.session.create', {
+    const value = (await window.coded.bridge.invoke('coded.session.create', {
       ...(opts.presetId === undefined ? {} : { presetId: opts.presetId }),
       ...(opts.workspaceId === undefined ? {} : { workspaceId: opts.workspaceId }),
       ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
@@ -229,7 +229,7 @@ export const dsh = {
 
   /** Queue one text prompt into the session. */
   async prompt(sessionId: string, text: string): Promise<void> {
-    await window.dshDesktop.dsh.invoke('coded.session.send', {
+    await window.coded.bridge.invoke('coded.session.send', {
       sessionId,
       mode: 'queue',
       content: [{ type: 'text', text }],
@@ -247,7 +247,7 @@ export const dsh = {
     gateId: string,
     answer: GateAnswer,
   ): Promise<{ accepted: boolean; reason?: string }> {
-    return (await window.dshDesktop.dsh.invoke('coded.session.respond', {
+    return (await window.coded.bridge.invoke('coded.session.respond', {
       sessionId,
       gateId,
       answer,
@@ -268,7 +268,7 @@ export const dsh = {
     },
     opts?: { types?: string[] },
   ): Promise<number> {
-    return window.dshDesktop.dsh.openStream('events', { types: opts?.types }, {
+    return window.coded.bridge.openStream('events', { types: opts?.types }, {
       onFrame: (envelope) => {
         const e = envelope as { type?: string } | undefined
         if (e !== undefined && typeof e.type === 'string') handlers.onEvent(e as CodedSemanticEvent)

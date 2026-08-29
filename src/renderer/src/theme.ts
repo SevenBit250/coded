@@ -65,7 +65,7 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
 }
 
 /** localStorage key for the user's explicit theme choice. */
-const STORAGE_KEY = 'dsh-theme'
+const STORAGE_KEY = 'coded-theme'
 
 /** The stored choice, or the OS preference when the user never chose. */
 export function initialTheme(): ThemeName {

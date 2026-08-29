@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
-import type { ChatMessage } from './use-dsh-session'
+import type { ChatMessage } from './use-session'
 import { Markdown } from './Markdown'
 
 export interface ChatStreamProps {

@@ -1,5 +1,5 @@
 /**
- * useDshSession — the renderer's session state machine over the CodedBridge:
+ * useSession — the renderer's session state machine over the CodedBridge:
  * lifecycle status, the ACTIVE session (switched from the sidebar), and the
  * transcript.
  *
@@ -16,12 +16,12 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
-import { dsh } from './client'
+import { bridge } from './client'
 import type {
   CodedContentPart,
   CodedSemanticEvent,
   CodedTranscriptItem,
-  DshStatus,
+  BridgeStatus,
   QuestionAnswerItem,
   QuestionItem,
 } from './client'
@@ -63,8 +63,8 @@ function nextId(): string {
   return `m${idCounter}`
 }
 
-export interface DshSession {
-  status: DshStatus
+export interface SessionState {
+  status: BridgeStatus
   /** Transcript items of the active session (semantic shapes). */
   messages: ChatMessage[]
   /** True while a send is in flight (composer locks). */
@@ -116,18 +116,18 @@ function summarizeArgs(raw: unknown): string | undefined {
   }
 }
 
-export interface UseDshSessionOptions {
+export interface UseSessionStateOptions {
   /** Workspace to root a fresh session in (composer project picker). */
   workspaceId?: string | null
   /** The first send of a fresh draft created this session — select it. */
   onSessionCreated?: (sessionId: string) => void
 }
 
-export function useDshSession(
+export function useSession(
   sessionId: string | null,
-  opts?: UseDshSessionOptions,
-): DshSession {
-  const [status, setStatus] = useState<DshStatus>('starting')
+  opts?: UseSessionStateOptions,
+): SessionState {
+  const [status, setStatus] = useState<BridgeStatus>('starting')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
   const [queue, setQueue] = useState<QueuedMessage[]>([])
@@ -151,12 +151,12 @@ export function useDshSession(
   useEffect(() => {
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
-    let lastStatus: DshStatus = 'starting'
+    let lastStatus: BridgeStatus = 'starting'
     /** Subscribe the semantic events stream once per bridge epoch. */
     const subscribe = (): void => {
       if (subscribedRef.current) return
       subscribedRef.current = true
-      void dsh
+      void bridge
         .openEvents(
           {
             onEvent: (event) => {
@@ -179,12 +179,12 @@ export function useDshSession(
           { types: EVENT_TYPES },
         )
         .catch((error) => {
-          console.log(`[dsh-session] events open failed: ${String(error)}`)
+          console.log(`[session] events open failed: ${String(error)}`)
           subscribedRef.current = false
         })
     }
 
-    const consider = (next: DshStatus): void => {
+    const consider = (next: BridgeStatus): void => {
       if (cancelled) return
       lastStatus = next
       setStatus(next)
@@ -194,8 +194,8 @@ export function useDshSession(
 
     // Pull the current status first: the bridge-connected broadcast usually
     // fires before React finishes mounting, so push-only misses it.
-    void dsh.status().then((current) => consider(current)).catch(() => {})
-    const off = dsh.onStatus(consider)
+    void bridge.status().then((current) => consider(current)).catch(() => {})
+    const off = bridge.onStatus(consider)
     return () => {
       cancelled = true
       if (retryTimer !== null) clearTimeout(retryTimer)
@@ -220,7 +220,7 @@ export function useDshSession(
     if (selfCreatedRef.current.has(sessionId)) return
     let stale = false
     setMessages([])
-    void dsh
+    void bridge
       .sessionHistory(sessionId)
       .then((page) => {
         if (stale) return
@@ -229,7 +229,7 @@ export function useDshSession(
       })
       .catch((error: unknown) => {
         if (!stale) {
-          console.log(`[dsh-session] history load failed: ${String(error)}`)
+          console.log(`[session] history load failed: ${String(error)}`)
         }
       })
     return () => {
@@ -390,7 +390,7 @@ export function useDshSession(
   const answerApproval = useCallback(
     (pending: PendingApproval, outcome: 'allowed-once' | 'rejected'): void => {
       setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== pending.approvalId))
-      void dsh
+      void bridge
         .respond(pending.sessionId, pending.gateId, {
           kind: 'approval',
           approvalId: pending.approvalId,
@@ -398,11 +398,11 @@ export function useDshSession(
         })
         .then((receipt) => {
           if (!receipt.accepted) {
-            console.log(`[dsh-session] approval respond refused: ${receipt.reason ?? 'unknown'}`)
+            console.log(`[session] approval respond refused: ${receipt.reason ?? 'unknown'}`)
           }
         })
         .catch((error: unknown) => {
-          console.log(`[dsh-session] approval respond failed: ${String(error)}`)
+          console.log(`[session] approval respond failed: ${String(error)}`)
         })
     },
     [],
@@ -411,15 +411,15 @@ export function useDshSession(
   const answerQuestion = useCallback(
     (pending: PendingQuestion, answers: QuestionAnswerItem[]): void => {
       setPendingQuestions((prev) => prev.filter((p) => p.gateId !== pending.gateId))
-      void dsh
+      void bridge
         .respond(pending.sessionId, pending.gateId, { kind: 'question', answers })
         .then((receipt) => {
           if (!receipt.accepted) {
-            console.log(`[dsh-session] question respond refused: ${receipt.reason ?? 'unknown'}`)
+            console.log(`[session] question respond refused: ${receipt.reason ?? 'unknown'}`)
           }
         })
         .catch((error: unknown) => {
-          console.log(`[dsh-session] question respond failed: ${String(error)}`)
+          console.log(`[session] question respond failed: ${String(error)}`)
         })
     },
     [],
@@ -428,15 +428,15 @@ export function useDshSession(
   const cancelQuestion = useCallback(
     (pending: PendingQuestion): void => {
       setPendingQuestions((prev) => prev.filter((p) => p.gateId !== pending.gateId))
-      void dsh
+      void bridge
         .respond(pending.sessionId, pending.gateId, 'cancel')
         .then((receipt) => {
           if (!receipt.accepted) {
-            console.log(`[dsh-session] question cancel refused: ${receipt.reason ?? 'unknown'}`)
+            console.log(`[session] question cancel refused: ${receipt.reason ?? 'unknown'}`)
           }
         })
         .catch((error: unknown) => {
-          console.log(`[dsh-session] question cancel failed: ${String(error)}`)
+          console.log(`[session] question cancel failed: ${String(error)}`)
         })
     },
     [],
@@ -445,15 +445,15 @@ export function useDshSession(
   const interrupt = useCallback((): void => {
     const id = sessionIdRef.current
     if (id === null) return
-    void dsh
+    void bridge
       .cancelSession(id)
       .then((receipt) => {
         if (!receipt.accepted) {
-          console.log('[dsh-session] cancel refused')
+          console.log('[session] cancel refused')
         }
       })
       .catch((error: unknown) => {
-        console.log(`[dsh-session] cancel failed: ${String(error)}`)
+        console.log(`[session] cancel failed: ${String(error)}`)
       })
   }, [])
 
@@ -462,8 +462,8 @@ export function useDshSession(
     const id = sessionIdRef.current
     if (id === null) return
     setQueue((prev) => prev.filter((item) => item.itemId !== itemId))
-    void dsh.removeQueuedMessage(id, itemId).catch((error: unknown) => {
-      console.log(`[dsh-session] dequeue failed: ${String(error)}`)
+    void bridge.removeQueuedMessage(id, itemId).catch((error: unknown) => {
+      console.log(`[session] dequeue failed: ${String(error)}`)
     })
   }, [])
 
@@ -478,8 +478,8 @@ export function useDshSession(
         try {
           if (sessionIdRef.current === null) {
             const workspaceId = workspaceIdRef.current ?? null
-            const cwd = workspaceId === null ? await dsh.defaultCwd() : undefined
-            sessionIdRef.current = await dsh.createSession(
+            const cwd = workspaceId === null ? await bridge.defaultCwd() : undefined
+            sessionIdRef.current = await bridge.createSession(
               workspaceId !== null
                 ? { workspaceId }
                 : { cwd: cwd ?? '' },
@@ -487,7 +487,7 @@ export function useDshSession(
             selfCreatedRef.current.add(sessionIdRef.current)
             onSessionCreatedRef.current?.(sessionIdRef.current)
           }
-          await dsh.prompt(sessionIdRef.current, trimmed)
+          await bridge.prompt(sessionIdRef.current, trimmed)
         } catch (error) {
           setMessages((prev) => [
             ...prev,
@@ -524,4 +524,4 @@ export function useDshSession(
 }
 
 /** Convenience for components that only want the element. */
-export type DshSessionElement = ReactElement
+export type SessionStateElement = ReactElement
