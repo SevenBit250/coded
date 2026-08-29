@@ -895,8 +895,15 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     if (selectedSession === null) {
       // Pre-session choice: remember it (applied when the session is created)
       // and reflect it locally — the home snapshot has no session to confirm
-      // with, but the chip must still follow the pick.
-      pendingRef.current = { ...pendingRef.current, ...selection }
+      // with, but the chip must still follow the pick. Model keys replace
+      // wholesale so switching models pre-session cannot keep the previous
+      // model's effort unless onModelChange carried it explicitly.
+      pendingRef.current = {
+        modeId: pendingRef.current?.modeId,
+        provider: selection.provider,
+        model: selection.model,
+        reasoningEffort: selection.reasoningEffort,
+      }
       setModels((prev) =>
         prev === null
           ? prev
@@ -929,9 +936,24 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const onModelChange = (key: string | null): void => {
     if (key === null) return
     const { provider, model } = parseModelKey(key)
-    // Switching models drops the old model's effort — the new route's
-    // default applies (selectModel without reasoningEffort).
-    applyModelSelection({ provider, model })
+    // The effort rides across model switches: the current effort carries to
+    // the target route whenever that route offers the same id; only when it
+    // cannot match (or the user is on 默认) does the target's route default
+    // apply.
+    const current = models?.current.reasoningEffort
+    const route = models?.routes.find((r) => r.provider === provider && r.model === model)
+    const carried =
+      current !== undefined &&
+      current !== '' &&
+      route?.efforts !== undefined &&
+      route.efforts.some((e) => e.id === current)
+        ? current
+        : undefined
+    applyModelSelection({
+      provider,
+      model,
+      ...(carried !== undefined ? { reasoningEffort: carried } : {}),
+    })
   }
   const onEffortChange = (effortId: string | null): void => {
     if (models === null || effortId === null) return
