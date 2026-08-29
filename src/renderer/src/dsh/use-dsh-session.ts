@@ -79,6 +79,12 @@ export interface DshSession {
   /** Answerable frames awaiting the user (all sessions; filter at render). */
   pendingApprovals: PendingApproval[]
   pendingQuestions: PendingQuestion[]
+  /**
+   * The log-resolved agent preset of the active session, from its history
+   * read. Undefined until the read lands (and for sessions the shell created
+   * itself, whose preset never needed correcting).
+   */
+  agentPreset: string | undefined
   answerApproval: (pending: PendingApproval, outcome: 'allowed-once' | 'rejected') => void
   answerQuestion: (pending: PendingQuestion, answers: QuestionAnswerItem[]) => void
   cancelQuestion: (pending: PendingQuestion) => void
@@ -127,6 +133,8 @@ export function useDshSession(
   const [queue, setQueue] = useState<QueuedMessage[]>([])
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const [pendingQuestions, setPendingQuestions] = useState<PendingQuestion[]>([])
+  /** Log-resolved preset of the active session (from its history page). */
+  const [agentPreset, setAgentPreset] = useState<string | undefined>(undefined)
   const sessionIdRef = useRef<string | null>(null)
   /** Sessions this client created itself — their transcript is already
    *  local, so the switch effect must not rebuild it from history. */
@@ -204,6 +212,7 @@ export function useDshSession(
     sessionIdRef.current = sessionId
     setBusy(false)
     setQueue([])
+    setAgentPreset(undefined)
     if (sessionId === null) {
       setMessages([])
       return
@@ -216,6 +225,7 @@ export function useDshSession(
       .then((page) => {
         if (stale) return
         setMessages(page.items.map((item) => ({ ...item })))
+        setAgentPreset(page.agentPreset)
       })
       .catch((error: unknown) => {
         if (!stale) {
@@ -506,6 +516,7 @@ export function useDshSession(
     dequeue,
     pendingApprovals,
     pendingQuestions,
+    agentPreset,
     answerApproval,
     answerQuestion,
     cancelQuestion,

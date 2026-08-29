@@ -27,7 +27,7 @@ import { ApprovalCard, QuestionCard } from '../dsh/gates'
 import { useDshSession } from '../dsh/use-dsh-session'
 import { useDshDirectory } from '../dsh/use-dsh-directory'
 import { dsh } from '../dsh/client'
-import type { CodedAccessMode, CodedModelsSnapshot } from '@coded/bridge-protocol'
+import type { CodedAccessMode, CodedAgentPreset, CodedModelsSnapshot } from '@coded/bridge-protocol'
 
 /** Main screen props. */
 export interface MainProps {
@@ -199,6 +199,8 @@ interface SessionStub {
   status: SessionStatus
   /** An answerable frame (approval/question) waits on this session. */
   pending?: boolean
+  /** The agent preset this session runs, when it names one. */
+  agentPreset?: string
 }
 
 interface WorkspaceStub {
@@ -222,64 +224,6 @@ const PROJECT_ACTIONS: readonly DropdownAction[] = [
  * are backend English — the shell localizes the well-known ones).
  */
 const EFFORT_LABELS: Record<string, string> = { low: '低', medium: '中', high: '高', max: '最高' }
-
-/**
- * Working modes, mirrored from the harness agent presets (ids + zh copy per
- * ui-agent-preset locales). Static stand-in for now — swap the roster and the
- * local state for `api.agentPresets.list` + Settings ns 'agent-presets'
- * patching once the transport lands.
- */
-const MODES: readonly DropdownOption[] = [
-  {
-    id: 'standard',
-    label: '标准模式',
-    description: '功能完整的编码 Agent：文件编辑、Shell、检索、Skills、计划、目标、子代理与工作流。',
-    // lucide:layers
-    icon: (
-      <Icon>
-        <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
-        <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
-        <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
-      </Icon>
-    ),
-  },
-  {
-    id: 'code',
-    label: 'PTC 模式',
-    description: '具备标准模式的全部能力，并通过 Code Mode SDK 让模型用一个 TypeScript 程序组合多步操作。',
-    // lucide:code
-    icon: (
-      <Icon>
-        <path d="m16 18 6-6-6-6M8 6l-6 6 6 6" />
-      </Icon>
-    ),
-  },
-  {
-    id: 'minimal',
-    label: '极简模式',
-    description: '仅提供持久 bash 与 str_replace_editor 的双工具编码 Agent。',
-    // lucide:circle-minus
-    icon: (
-      <Icon>
-        <circle cx="12" cy="12" r="10" />
-        <path d="M8 12h8" />
-      </Icon>
-    ),
-  },
-  {
-    id: 'cordis',
-    label: '创造模式',
-    description: '创建自定义 Agent preset：标准模式的全部能力，外加运行时检查、插件实验与创作指导。',
-    // lucide:wand-2
-    icon: (
-      <Icon>
-        <path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z" />
-        <path d="m14 7 3 3" />
-        <path d="M5 6v4M19 14v4M10 2v2M7 8H3M21 16h-4M11 3H9" />
-      </Icon>
-    ),
-  },
-]
 
 /**
  * Access-mode display copy for the known permission preset ids. The id list
@@ -573,6 +517,20 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   }
   // The open session (a real harness session id; null = fresh draft).
   const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  // Composer choices staged before a session exists, applied when one is
+  // created (permission/model via applyPending, the agent preset through the
+  // blank-session select). Declared early: roster-guard/archive handlers
+  // reset the mode echo from it.
+  const pendingRef = useRef<{
+    modeId?: string
+    provider?: string
+    model?: string
+    reasoningEffort?: string
+    presetId?: string
+  } | null>(null)
+  /** The agent preset shown in the composer selector: the active session's
+   *  pinned one, or the draft's staged pick. */
+  const [modeValue, setModeValue] = useState<string | null>(null)
   // Rename dialog: which row is being renamed, its draft and any error.
   const [renameTarget, setRenameTarget] = useState<
     { kind: 'workspace'; id: string } | { kind: 'session'; wsId: string; id: string } | null
@@ -617,6 +575,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           updatedMinutesAgo: Math.max(0, (Date.now() - s.updatedAt) / 60000),
           status: s.running ? ('running' as const) : s.errored ? ('interrupted' as const) : ('idle' as const),
           pending: pendingBySession.has(s.id),
+          ...(s.agentPreset !== undefined ? { agentPreset: s.agentPreset } : {}),
         })),
       })),
     [directory.workspaces, pendingBySession],
@@ -635,8 +594,20 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   useEffect(() => {
     if (selectedSession === null) return
     const present = directory.workspaces.some((w) => w.sessions.some((s) => s.id === selectedSession))
-    if (!present) setSelectedSession(null)
+    if (!present) {
+      setSelectedSession(null)
+      setModeValue(pendingRef.current?.presetId ?? null)
+    }
   }, [directory.workspaces, selectedSession])
+
+  // The baseline row's preset is header-derived (the cold session list reads
+  // headers only), so a session that switched preset while blank echoes a
+  // stale value until corrected. The session's own history read carries the
+  // log-resolved truth — the selector echo follows it when it lands.
+  useEffect(() => {
+    if (selectedSession === null) return
+    if (session.agentPreset !== undefined) setModeValue(session.agentPreset)
+  }, [session.agentPreset, selectedSession])
 
   // Default the composer project to the last-exit workspace once the roster
   // lands (id match, else path anchor, else first); the explicit
@@ -703,23 +674,35 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     if (deleteTarget === null) return
     const doomed = deleteTarget
     void dsh.deleteWorkspace(doomed.id).then(directory.refresh)
-    if (doomed.sessions.some((s) => s.id === selectedSession)) setSelectedSession(null)
+    if (doomed.sessions.some((s) => s.id === selectedSession)) {
+      setSelectedSession(null)
+      setModeValue(pendingRef.current?.presetId ?? null)
+    }
     if (selectedProject === doomed.id) setSelectedProject(null)
     setDeleteTarget(null)
+  }
+
+  /** Select a session and echo its pinned preset into the mode selector. */
+  const openSession = (id: string, preset: string | null | undefined): void => {
+    setSelectedSession(id)
+    setModeValue(preset ?? null)
   }
 
   /** Fork: the host answers with the new session's id; select it. */
   const forkSession = (source: SessionStub): void => {
     void dsh.forkSession(source.id).then((forkedId) => {
       directory.refresh()
-      if (forkedId !== null) setSelectedSession(forkedId)
+      if (forkedId !== null) openSession(forkedId, source.agentPreset ?? null)
     })
   }
 
   /** Archive: non-destructive; the host frame hides the row. */
   const archiveSession = (sessionId: string): void => {
     void dsh.archiveSession(sessionId).then(directory.refresh)
-    if (selectedSession === sessionId) setSelectedSession(null)
+    if (selectedSession === sessionId) {
+      setSelectedSession(null)
+      setModeValue(pendingRef.current?.presetId ?? null)
+    }
   }
 
   /** New session in a workspace: create blank (hidden in the list until its
@@ -774,10 +757,39 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     () => workspaces.map((w) => ({ id: w.id, label: w.title })),
     [workspaces],
   )
-  const [workMode, setWorkMode] = useState<string | null>('standard')
   // Harness parity: the agent preset is pinned when the session starts, so
   // the mode selector locks once the conversation has any message.
   const conversationStarted = session.messages.length > 0
+  // Preset roster behind a capability gate: the selector renders only when
+  // the adapter declares `presets` AND the deployment composes some.
+  const [caps, setCaps] = useState<string[]>([])
+  const [presets, setPresets] = useState<CodedAgentPreset[] | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const fetchPresets = async (): Promise<void> => {
+      try {
+        const nextCaps = await dsh.capabilities()
+        if (cancelled) return
+        setCaps(nextCaps)
+        if (!nextCaps.includes('presets')) return
+        const roster = await dsh.listPresets()
+        if (!cancelled) setPresets(roster)
+      } catch (error: unknown) {
+        console.log(`[composer] presets load failed: ${String(error)}`)
+      }
+    }
+    void dsh.status().then((s) => {
+      if (s === 'bridge-connected') void fetchPresets()
+    })
+    const off = dsh.onStatus((s) => {
+      if (s === 'bridge-connected') void fetchPresets()
+    })
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [])
+  const presetsSupported = caps.includes('presets') && presets !== null && presets.length > 0
   // CodedBridge session: transcript + composer draft.
   const [draft, setDraft] = useState('')
   const submitDraft = (): void => {
@@ -792,12 +804,6 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const [accessMode, setAccessMode] = useState<string | null>('workspace-write')
   const [accessConfirm, setAccessConfirm] = useState<string | null>(null)
   const [models, setModels] = useState<CodedModelsSnapshot | null>(null)
-  const pendingRef = useRef<{
-    modeId?: string
-    provider?: string
-    model?: string
-    reasoningEffort?: string
-  } | null>(null)
   useEffect(() => {
     // Session-scoped snapshot for an active session; the deployment picture
     // (host default + host-wide catalog) for the home draft. Pulled when the
@@ -861,6 +867,16 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     const pending = pendingRef.current
     if (pending === null) return
     pendingRef.current = null
+    if (pending.presetId !== undefined) {
+      void dsh
+        .selectPreset(sessionId, pending.presetId)
+        // Re-baseline so the roster row carries the applied preset — the
+        // session.added row predates it (staged presets apply post-create).
+        .then(() => directory.refresh())
+        .catch((error: unknown) => {
+          console.log(`[composer] pending preset select failed: ${String(error)}`)
+        })
+    }
     if (pending.modeId !== undefined) {
       void dsh.setPermissionMode(sessionId, pending.modeId).catch((error: unknown) => {
         console.log(`[composer] pending permission set failed: ${String(error)}`)
@@ -975,6 +991,37 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
       console.log(`[composer] permission set failed: ${String(error)}`)
     })
   }
+
+  /** Composer preset pick: staging on the draft, a live blank-session switch
+   *  once a session is open. A started session's refusal (backend
+   *  `agent-preset-locked`) reverts the pick. */
+  const onPresetPick = (presetId: string | null): void => {
+    if (presetId === null) return
+    const previous = modeValue
+    setModeValue(presetId)
+    if (selectedSession === null) {
+      pendingRef.current = { ...pendingRef.current, presetId }
+      return
+    }
+    void dsh
+      .selectPreset(selectedSession, presetId)
+      .then(() => directory.refresh())
+      .catch((error: unknown) => {
+        console.log(`[composer] preset select refused: ${String(error)}`)
+        setModeValue(previous)
+      })
+  }
+
+  /** Preset roster → dropdown options. */
+  const modeOptions = useMemo<DropdownOption[]>(
+    () =>
+      (presets ?? []).map((p) => ({
+        id: p.id,
+        label: p.name,
+        ...(p.description !== undefined ? { description: p.description } : {}),
+      })),
+    [presets],
+  )
 
   /** Semantic roster → dropdown options. */
   const modelOptions = useMemo<DropdownOption[]>(() => {
@@ -1150,7 +1197,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                     key={session.id}
                     session={session}
                     selected={selectedSession === session.id}
-                    onSelect={() => setSelectedSession(session.id)}
+                    onSelect={() => openSession(session.id, session.agentPreset)}
                     onAction={(action) => dispatchSessionAction(action, ws.id, session)}
                   />
                 ))}
@@ -1185,7 +1232,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                             key={s.id}
                             session={s}
                             selected={selectedSession === s.id}
-                            onSelect={() => setSelectedSession(s.id)}
+                            onSelect={() => openSession(s.id, s.agentPreset)}
                             onAction={(action) =>
                               dispatchSessionAction(action, workspace.id, s)
                             }
@@ -1288,15 +1335,17 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 }}
                 noneLabel="不在项目中工作"
               />
-              <Dropdown
-                headSlot="selected"
-                options={MODES}
-                value={workMode}
-                onChange={setWorkMode}
-                placeholder="选择模式"
-                searchable={false}
-                disabled={conversationStarted}
-              />
+              {presetsSupported && (
+                <Dropdown
+                  headSlot="selected"
+                  options={modeOptions}
+                  value={modeValue}
+                  onChange={onPresetPick}
+                  placeholder="选择模式"
+                  searchable={false}
+                  disabled={conversationStarted}
+                />
+              )}
             </div>
             <div className="composer-body">
             {session.queue.length > 0 && (

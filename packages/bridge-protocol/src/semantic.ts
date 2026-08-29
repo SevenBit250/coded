@@ -55,6 +55,16 @@ export interface CodedAccessMode {
   description?: string
 }
 
+/** One agent preset the deployment can compose a session from. */
+export interface CodedAgentPreset {
+  id: string
+  /** Published display name; the adapter folds the id in when absent. */
+  name: string
+  description?: string
+  /** Sessions naming no preset are composed from this one. */
+  isDefault?: boolean
+}
+
 /** `coded.permission.modes` response. */
 export interface CodedPermissionModes {
   modes: CodedAccessMode[]
@@ -84,6 +94,8 @@ export interface CodedSession {
   updatedAt: number
   phase: 'blank' | 'idle' | 'running' | 'errored'
   archived: boolean
+  /** The agent preset this session runs, when it names one. */
+  agentPreset?: string
 }
 
 /** `coded.describe` response — backend identity for health surfaces. */
@@ -128,6 +140,13 @@ export type CodedTranscriptItem =
 export interface CodedHistoryPage {
   items: CodedTranscriptItem[]
   hasMore: boolean
+  /**
+   * The log-resolved agent preset (newest selection wins), read from the
+   * same events as the transcript. The cold session list serves the header's
+   * creation-time value only, so this is the authoritative echo for sessions
+   * that switched preset while blank.
+   */
+  agentPreset?: string
 }
 
 /** Discriminator: every semantic event carries its type + sessionId. */
@@ -142,7 +161,12 @@ export interface CodedSemanticEventBase {
 export type CodedSemanticEvent = CodedSemanticEventBase &
   (
     | { type: 'session.phase'; sessionId: string; phase: 'blank' | 'idle' | 'running' | 'errored' }
-    | { type: 'session.added'; sessionId: string; blank?: boolean }
+    | {
+        type: 'session.added'
+        sessionId: string
+        blank?: boolean
+        agentPreset?: string
+      }
     | { type: 'session.removed'; sessionId: string }
     | { type: 'session.title'; sessionId: string; title: string }
     | { type: 'session.workspaceChanged'; workspace: CodedWorkspace }

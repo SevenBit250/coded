@@ -139,6 +139,7 @@ export const CODED_METHOD_CLASS: Readonly<Record<string, CodedMethodClass>> = {
   'coded.session.history': 'query',
   'coded.models.list': 'query',
   'coded.permission.modes': 'query',
+  'coded.presets.list': 'query',
   'coded.session.create': 'control',
   'coded.session.rename': 'control',
   'coded.session.fork': 'control',
@@ -149,6 +150,7 @@ export const CODED_METHOD_CLASS: Readonly<Record<string, CodedMethodClass>> = {
   'coded.queue.remove': 'control',
   'coded.models.select': 'control',
   'coded.permission.set': 'control',
+  'coded.presets.select': 'control',
   'coded.workspace.rename': 'control',
   'coded.workspace.delete': 'control',
 }

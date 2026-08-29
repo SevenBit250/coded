@@ -40,6 +40,7 @@ function recomputeStatus(): void {
 
 function registerDshIpc(): void {
   ipcMain.handle(IPC.dsh.statusGet, () => dshStatusValue)
+  ipcMain.handle(IPC.dsh.capabilitiesGet, () => bridge?.capabilities() ?? [])
   ipcMain.handle(IPC.dsh.invoke, (_event, method: string, payload: unknown) => {
     if (bridge === null) throw new Error('bridge not started')
     return bridge.call(method, payload).catch((error: unknown) => {

@@ -65,11 +65,18 @@ export class BridgeClient {
   private statusValue: BridgeStatus = 'disconnected'
   private stopped = false
   private loop: Promise<void> | null = null
+  /** Adapter hello capabilities of the current epoch (§11; empty while down). */
+  private adapterCapabilities: string[] = []
 
   constructor(private readonly opts: BridgeClientOptions) {}
 
   status(): BridgeStatus {
     return this.statusValue
+  }
+
+  /** Semantic-surface capabilities the adapter declared at handshake. */
+  capabilities(): string[] {
+    return [...this.adapterCapabilities]
   }
 
   /** Start the (re)connect loop. Idempotent. */
@@ -219,6 +226,7 @@ export class BridgeClient {
       socket.destroy()
       throw new Error(`handshake mismatch (proto ${String(hello.proto)})`)
     }
+    this.adapterCapabilities = [...hello.capabilities]
     this.send({ t: 'hello', side: 'shell', proto: BRIDGE_PROTOCOL_VERSION, version: this.opts.version, capabilities: [] })
 
     // Now attach the feed and drain whatever the handshake wait buffered
@@ -337,6 +345,7 @@ export class BridgeClient {
 
   /** Reject in-flight calls and end every stream with a reason. */
   private failAll(reason: string): void {
+    this.adapterCapabilities = []
     for (const pending of this.pending.values()) pending.reject(new Error(reason))
     this.pending.clear()
     for (const handlers of this.streams.values()) handlers.onEnd?.(reason)

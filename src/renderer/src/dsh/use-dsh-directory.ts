@@ -20,6 +20,8 @@ export interface DirectorySession {
   /** Last agent errored (maps to the interrupted marker). */
   errored: boolean
   blank: boolean
+  /** The agent preset this session runs, when it names one. */
+  agentPreset?: string
 }
 
 export interface DirectoryWorkspace {
@@ -60,6 +62,7 @@ function toDirectorySession(session: CodedSession): DirectorySession {
     running: session.phase === 'running',
     errored: session.phase === 'errored',
     blank: session.phase === 'blank',
+    ...(session.agentPreset !== undefined ? { agentPreset: session.agentPreset } : {}),
   }
 }
 
@@ -129,7 +132,22 @@ export function useDshDirectory(): DshDirectory {
     (event: CodedSemanticEvent): void => {
       switch (event.type) {
         case 'session.added': {
-          if (sessionsRef.current.has(event.sessionId)) return
+          // Web parity: this frame is an UPSERT, not add-if-absent. A cold
+          // session's baseline row is header-only (the host list skips the
+          // log), and the same frame lands again when the session attaches —
+          // our models.list on open cold-resumes it — carrying the
+          // log-derived agentPreset. Skipping known rows would freeze the
+          // stale creation-header value forever.
+          const existing = sessionsRef.current.get(event.sessionId)
+          if (existing !== undefined) {
+            sessionsRef.current.set(event.sessionId, {
+              ...existing,
+              blank: event.blank === true,
+              ...(event.agentPreset !== undefined ? { agentPreset: event.agentPreset } : {}),
+            })
+            publish()
+            return
+          }
           sessionsRef.current.set(event.sessionId, {
             id: event.sessionId,
             title: '新会话',
@@ -137,6 +155,7 @@ export function useDshDirectory(): DshDirectory {
             running: false,
             errored: false,
             blank: event.blank === true,
+            ...(event.agentPreset !== undefined ? { agentPreset: event.agentPreset } : {}),
           })
           publish()
           return

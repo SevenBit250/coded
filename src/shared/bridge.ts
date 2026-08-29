@@ -30,6 +30,11 @@ export interface DshBridgeSurface {
   /** Subscribe to status changes; returns the unsubscribe function. */
   onStatus: (cb: (status: DshBridgeStatus) => void) => () => void
   /**
+   * Semantic-surface capabilities the adapter declared at handshake (§11,
+   * e.g. 'presets'). Empty while the bridge is down; re-resolved per epoch.
+   */
+  capabilities: () => Promise<string[]>
+  /**
    * Harness ApiProxy unary call. Resolves with the carrier's full-form
    * ServerResponse document ({type:'server-response', rpcId, ok, value|error}).
    */

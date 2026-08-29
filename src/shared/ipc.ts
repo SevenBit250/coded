@@ -34,6 +34,8 @@ export const IPC = {
     statusGet: 'dsh:status-get',
     /** event {status}: runtime/bridge lifecycle broadcast. */
     status: 'dsh:status',
+    /** invoke() → adapter hello capabilities of the current bridge epoch. */
+    capabilitiesGet: 'dsh:capabilities-get',
   },
 } as const
 

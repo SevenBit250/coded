@@ -81,6 +81,7 @@ const bridge: DshDesktopBridge = {
   transition: () => ipcRenderer.send(IPC.shell.transition),
   dsh: {
     status: () => ipcRenderer.invoke(IPC.dsh.statusGet) as Promise<DshBridgeStatus>,
+    capabilities: () => ipcRenderer.invoke(IPC.dsh.capabilitiesGet) as Promise<string[]>,
     onStatus: (cb) => {
       statusListeners.add(cb)
       return () => {

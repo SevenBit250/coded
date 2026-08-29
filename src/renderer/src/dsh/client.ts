@@ -12,6 +12,7 @@
  */
 
 import type {
+  CodedAgentPreset,
   CodedDescribe,
   CodedHistoryPage,
   CodedModelSelection,
@@ -25,6 +26,7 @@ import type {
 
 // Re-exported for the hooks/components that consume the semantic domain.
 export type {
+  CodedAgentPreset,
   CodedContentPart,
   CodedDescribe,
   CodedHistoryPage,
@@ -175,6 +177,28 @@ export const dsh = {
     return (await window.dshDesktop.dsh.invoke('coded.permission.modes', {})) as CodedPermissionModes
   },
 
+  /** Adapter-declared semantic capabilities of the current bridge epoch. */
+  capabilities(): Promise<string[]> {
+    return window.dshDesktop.dsh.capabilities()
+  },
+
+  /** The deployment's agent-preset roster (empty = none composed). */
+  async listPresets(): Promise<CodedAgentPreset[]> {
+    const value = (await window.dshDesktop.dsh.invoke('coded.presets.list', {})) as {
+      presets: CodedAgentPreset[]
+    }
+    return value.presets
+  },
+
+  /** Switch a blank session's agent preset; resolves with the resolved id. */
+  async selectPreset(sessionId: string, presetId: string): Promise<string | null> {
+    const value = (await window.dshDesktop.dsh.invoke('coded.presets.select', {
+      sessionId,
+      presetId,
+    })) as { agentPreset?: string }
+    return value.agentPreset ?? null
+  },
+
   /** Switch a session's permission mode. */
   async setPermissionMode(sessionId: string, modeId: string): Promise<void> {
     await window.dshDesktop.dsh.invoke('coded.permission.set', { sessionId, modeId })
@@ -190,10 +214,16 @@ export const dsh = {
   },
 
   /** Create a session; roots at a workspace when given, else at cwd. */
-  async createSession(opts: { workspaceId?: string; cwd?: string }): Promise<string> {
-    const value = (await window.dshDesktop.dsh.invoke('coded.session.create', opts)) as {
-      sessionId: string
-    }
+  async createSession(opts: {
+    workspaceId?: string
+    cwd?: string
+    presetId?: string
+  }): Promise<string> {
+    const value = (await window.dshDesktop.dsh.invoke('coded.session.create', {
+      ...(opts.presetId === undefined ? {} : { presetId: opts.presetId }),
+      ...(opts.workspaceId === undefined ? {} : { workspaceId: opts.workspaceId }),
+      ...(opts.cwd === undefined ? {} : { cwd: opts.cwd }),
+    })) as { sessionId: string }
     return value.sessionId
   },
 
