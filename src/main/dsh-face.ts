@@ -50,7 +50,7 @@ function registerDshIpc(): void {
 
   // Frames may arrive before the openStream invoke resolves back to the
   // renderer (the adapter replays fast), so buffer until the id is known.
-  ipcMain.handle(IPC.dsh.streamOpen, (event, stream: 'mux' | 'host', payload: unknown) => {
+  ipcMain.handle(IPC.dsh.streamOpen, (event, stream: 'events', payload: unknown) => {
     const sender = event.sender
     let id = -1
     const buffered: { id: number; envelope: unknown }[] = []
@@ -111,7 +111,7 @@ export function invokeDsh(method: string, payload: unknown): Promise<unknown> {
 }
 
 export function openDshStream(
-  stream: 'mux' | 'host',
+  stream: 'events',
   payload: unknown,
   handlers: DshStreamHandlers,
 ): Promise<number> {

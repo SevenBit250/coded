@@ -35,11 +35,11 @@ export interface DshBridgeSurface {
    */
   invoke: (method: string, payload: unknown) => Promise<unknown>
   /**
-   * Open a downstream event stream ('mux' | 'host'). Resolves with the
+   * Open the downstream semantic event stream. Resolves with the
    * shell-side stream id once dispatched (open confirmation arrives through
    * handlers.onOpen).
    */
-  openStream: (stream: 'mux' | 'host' | 'events', payload: unknown, handlers: DshStreamHandlers) => Promise<number>
+  openStream: (stream: 'events', payload: unknown, handlers: DshStreamHandlers) => Promise<number>
   /** Shell-side cancellation of an open stream. */
   abortStream: (id: number) => void
 }

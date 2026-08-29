@@ -1,21 +1,19 @@
 /**
- * CodedBridge wire frames (v0).
+ * CodedBridge wire frames (proto 1).
  *
  * Transport: one local pipe (Windows named pipe / POSIX UDS), NDJSON framing —
  * one JSON frame per `\n`-terminated line, UTF-8. Both ends are Node.
  *
- * Layering: the handshake frames below are entirely Coded-owned; `rpc` /
- * `stream-*` payloads are a transparent pass-through of the harness ApiProxy
- * RPC face (`method` names and payload shapes come from
- * `@deepseek-ai/dsh-host-apiproxy`'s api/ schemas and are NOT redefined here).
- * Semantic transformation (method pruning, aggregation) is reserved for a
- * future protocol version — the payloads stay opaque to v0.
+ * Layering: every frame is Coded-owned. The rpc plane speaks the semantic
+ * `coded.*` method surface (codedbridge-protocol.md §2) — backend dialects
+ * live and die inside the adapter; the downstream `events` stream carries
+ * synthesized CodedSemanticEvents whose envelope IS the event object.
  */
 
 import { z } from 'zod'
 
 /** Wire protocol version. Bump on any breaking frame-shape change. */
-export const BRIDGE_PROTOCOL_VERSION = 0
+export const BRIDGE_PROTOCOL_VERSION = 1
 
 /** Which end of the pipe a hello frame came from. */
 export type BridgeSide = 'adapter' | 'shell'
@@ -38,9 +36,9 @@ export const bridgeHelloSchema = z.object({
 export type BridgeHello = z.infer<typeof bridgeHelloSchema>
 
 /**
- * Unary RPC, transparent pass-through of the harness ApiProxy face: `method`
- * is an ApiProxy RPC method name, `payload` its request payload verbatim.
- * `id` is minted by the shell and echoed on exactly one reply frame.
+ * Unary RPC: `method` is a semantic `coded.*` name (§2.2), `payload` its
+ * request document. `id` is minted by the shell and echoed on exactly one
+ * reply frame.
  */
 export const bridgeRpcCallSchema = z.object({
   t: z.literal('rpc'),
@@ -50,7 +48,7 @@ export const bridgeRpcCallSchema = z.object({
 })
 export type BridgeRpcCall = z.infer<typeof bridgeRpcCallSchema>
 
-/** RPC success reply. `payload` is the ApiProxy response value verbatim. */
+/** RPC success reply. `payload` is the Coded-domain response document. */
 export const bridgeRpcOkSchema = z.object({
   t: z.literal('rpc-ok'),
   id: z.number().int(),
@@ -75,14 +73,13 @@ export const bridgeRpcErrSchema = z.object({
 })
 export type BridgeRpcErr = z.infer<typeof bridgeRpcErrSchema>
 
-/** The downstream event streams the harness face exposes. */
-export const bridgeStreamNameSchema = z.enum(['mux', 'host', 'events'])
+/** The downstream semantic event stream (proto 1: `events` only). */
+export const bridgeStreamNameSchema = z.enum(['events'])
 export type BridgeStreamName = z.infer<typeof bridgeStreamNameSchema>
 
 /**
- * Open a downstream event stream. `stream` selects mux (client-bound frames:
- * session updates, search hits, …) or host (host-bound frames: approvals,
- * questions, status). Shell-minted `id` keys every frame/end of this stream.
+ * Open the downstream semantic event stream. Shell-minted `id` keys every
+ * frame/end of this stream.
  */
 export const bridgeStreamOpenSchema = z.object({
   t: z.literal('stream-open'),

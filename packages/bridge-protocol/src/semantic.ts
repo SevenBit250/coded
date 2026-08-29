@@ -56,6 +56,38 @@ export interface CodedPermissionModes {
   current?: string
 }
 
+/** ---- M4: directory domain — workspace + session rosters (§2.1/§2.2). ---- */
+
+/** One workspace roster row (`coded.workspace.list`, `session.workspaceChanged`). */
+export interface CodedWorkspace {
+  workspaceId: string
+  title: string
+  path: string
+  /** Owned sessions in roster order — the sidebar's within-group order. */
+  sessionIds: string[]
+}
+
+/** One session roster row (`coded.session.list`). */
+export interface CodedSession {
+  id: string
+  /** Owning workspace, when the session is registered to one. */
+  workspaceId?: string
+  cwd?: string
+  /** Title projection value; '' when unnamed (the shell shows its blank label). */
+  title: string
+  updatedAt: number
+  phase: 'blank' | 'idle' | 'running' | 'errored'
+  archived: boolean
+}
+
+/** `coded.describe` response — backend identity for health surfaces. */
+export interface CodedDescribe {
+  backend: string
+  backendVersion: string
+  home: string
+  currentModel: string
+}
+
 /** ---- M2: transcript + semantic event stream (§2.3). ---- */
 
 /** One content part of a message (v1 renders text; others are reserved). */
@@ -107,7 +139,7 @@ export type CodedSemanticEvent = CodedSemanticEventBase &
     | { type: 'session.added'; sessionId: string; blank?: boolean }
     | { type: 'session.removed'; sessionId: string }
     | { type: 'session.title'; sessionId: string; title: string }
-    | { type: 'session.workspaceChanged'; workspace: { workspaceId: string; title: string; path: string; sessionIds: string[] } }
+    | { type: 'session.workspaceChanged'; workspace: CodedWorkspace }
     | { type: 'session.workspaceRemoved'; workspaceId: string }
     | { type: 'session.workspaceOrderChanged'; workspaceIds: string[] }
     | { type: 'session.archivedChanged' }

@@ -10,8 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { dsh } from './client'
-import type { CodedSemanticEvent, CodedTranscriptItem, DshStatus } from './client'
-import type { SessionSummary } from './client'
+import type { CodedSemanticEvent, CodedSession, CodedTranscriptItem, CodedWorkspace, DshStatus } from './client'
 
 export interface DirectorySession {
   id: string
@@ -52,20 +51,15 @@ const EVENT_TYPES = [
   'session.archivedChanged',
 ]
 
-/** Sidebar title: the 'title' projection, else the blank-session label. */
-function titleOf(summary: SessionSummary): string {
-  const title = summary.projections?.values['title']
-  return typeof title === 'string' && title !== '' ? title : '新会话'
-}
-
-function toDirectorySession(summary: SessionSummary): DirectorySession {
+/** Sidebar row from the semantic roster: '' titles fold onto the blank label. */
+function toDirectorySession(session: CodedSession): DirectorySession {
   return {
-    id: summary.sessionId,
-    title: titleOf(summary),
-    updatedAt: summary.updatedAt,
-    running: summary.running,
-    errored: false,
-    blank: summary.blank,
+    id: session.id,
+    title: session.title !== '' ? session.title : '新会话',
+    updatedAt: session.updatedAt,
+    running: session.phase === 'running',
+    errored: session.phase === 'errored',
+    blank: session.phase === 'blank',
   }
 }
 
@@ -74,7 +68,7 @@ function toDirectorySession(summary: SessionSummary): DirectorySession {
  *  the shell itself created (pinned), which stay visible until their first
  *  turn clears the blank bit naturally. */
 function compose(
-  workspaces: { workspaceId: string; title: string; path: string; sessionIds: string[] }[],
+  workspaces: CodedWorkspace[],
   sessions: Map<string, DirectorySession>,
   archived: Set<string>,
   pinned: Set<string>,
@@ -95,7 +89,7 @@ function compose(
 export function useDshDirectory(): DshDirectory {
   const [status, setStatus] = useState<DshStatus>('starting')
   const [workspaces, setWorkspaces] = useState<DirectoryWorkspace[]>([])
-  const workspacesRef = useRef<{ workspaceId: string; title: string; path: string; sessionIds: string[] }[]>([])
+  const workspacesRef = useRef<CodedWorkspace[]>([])
   const sessionsRef = useRef(new Map<string, DirectorySession>())
   const archivedRef = useRef(new Set<string>())
   /** Shell-created sessions kept visible while blank. */
@@ -120,9 +114,9 @@ export function useDshDirectory(): DshDirectory {
   const refresh = useCallback((): void => {
     void Promise.all([dsh.listWorkspaces(), dsh.listSessions()])
       .then(([ws, sessions]) => {
-        workspacesRef.current = ws.items
+        workspacesRef.current = ws.workspaces
         archivedRef.current = new Set(ws.archivedSessionIds)
-        sessionsRef.current = new Map(sessions.map((s) => [s.sessionId, toDirectorySession(s)]))
+        sessionsRef.current = new Map(sessions.map((s) => [s.id, toDirectorySession(s)]))
         publish()
       })
       .catch((error: unknown) => {

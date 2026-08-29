@@ -4,32 +4,34 @@
  * of any harness client class: the renderer speaks only the CodedBridge
  * private protocol, so harness upgrades cannot reach this code.
  *
- * Wire facts this file knows about (and the adapter passes through verbatim):
- *  - unary responses arrive as full-form ServerResponse documents
- *    ({type:'server-response', rpcId, result:{ok, value|error}}) — LEGACY
- *    pass-through methods (session.*, workspace.*, respond);
- *  - `coded.*` semantic methods (M1+) answer with Coded-domain payloads
- *    directly, typed by @coded/bridge-protocol/semantic;
- *  - downstream frames arrive as full-form ServerRequest documents
- *    ({type:'server-request', rpcId, method, payload}); the frame itself sits
- *    in the payload slot.
+ * Proto 1 posture: every unary goes through the semantic `coded.*` surface
+ * (codedbridge-protocol.md §2) and answers with Coded-domain payloads typed
+ * by @coded/bridge-protocol/semantic — no backend envelope, no backend method
+ * names. Downstream frames arrive on the single `events` stream, envelope =
+ * the CodedSemanticEvent itself.
  */
 
 import type {
+  CodedDescribe,
   CodedHistoryPage,
   CodedModelSelection,
   CodedModelsSnapshot,
   CodedPermissionModes,
   CodedSemanticEvent,
+  CodedSession,
   CodedTranscriptItem,
+  CodedWorkspace,
 } from '@coded/bridge-protocol'
 
 // Re-exported for the hooks/components that consume the semantic domain.
 export type {
   CodedContentPart,
+  CodedDescribe,
   CodedHistoryPage,
   CodedSemanticEvent,
+  CodedSession,
   CodedTranscriptItem,
+  CodedWorkspace,
 } from '@coded/bridge-protocol'
 
 /** Lifecycle status pushed by the shell (see shared/bridge.ts). */
@@ -59,38 +61,7 @@ export type GateAnswer =
   | { kind: 'question'; answers: QuestionAnswerItem[] }
   | 'cancel'
 
-/** ---- Directory domain (S2.1): sessions/workspaces listing. ---- */
-
-/** session.list row. Titles ride the projection baseline, not a field. */
-export interface SessionSummary {
-  sessionId: string
-  /** Epoch ms of creation/latest human prompt. */
-  updatedAt: number
-  /** Live agent attached and mid-turn. */
-  running: boolean
-  /** No turn yet — list surfaces hide these (and reuse them for New Session). */
-  blank: boolean
-  cwd?: string
-  agentPreset?: string
-  projections?: { values: Record<string, unknown>; asOfSeq: number }
-}
-
-export interface WorkspaceView {
-  workspaceId: string
-  path: string
-  title: string
-  sessionIds: string[]
-}
-
-/** Unwrap a full-form ServerResponse: value on ok, throw on business error. */
-function unwrap(serverResponse: unknown): unknown {
-  const sr = serverResponse as {
-    result?: { ok?: boolean; value?: unknown; error?: { message?: string } }
-  }
-  if (sr.result?.ok === true) return sr.result.value
-  const message = sr.result?.error?.message ?? 'harness rpc failed'
-  throw new Error(message)
-}
+/** ---- Directory domain (§2.1/§2.2): sessions/workspaces listing. ---- */
 
 export const dsh = {
   status: (): Promise<DshStatus> => window.dshDesktop.dsh.status(),
@@ -98,29 +69,18 @@ export const dsh = {
   onStatus: (cb: (status: DshStatus) => void): (() => void) =>
     window.dshDesktop.dsh.onStatus(cb),
 
-  /** Harness unary call; resolves with the response `value`. */
-  async call(method: string, payload: unknown): Promise<unknown> {
-    const value = unwrap(await window.dshDesktop.dsh.invoke(method, payload))
-    return value
-  },
-
-  /** Connectivity + environment probe (host-side identity). */
-  async describe(): Promise<{ version: string; home: string; model: string }> {
-    const value = (await dsh.call('host.describe', {})) as {
-      version: string
-      home: string
-      model: string
-    }
-    return value
+  /** Backend identity (health surfaces, cwd fallback). */
+  async describe(): Promise<CodedDescribe> {
+    return (await window.dshDesktop.dsh.invoke('coded.describe', {})) as CodedDescribe
   },
 
   /** First workspace path, or the user home when none is registered. */
   async defaultCwd(): Promise<string> {
     try {
-      const value = (await dsh.call('workspace.list', {})) as {
-        items: { path: string }[]
+      const value = (await window.dshDesktop.dsh.invoke('coded.workspace.list', {})) as {
+        workspaces: CodedWorkspace[]
       }
-      const first = value.items[0]?.path
+      const first = value.workspaces[0]?.path
       if (typeof first === 'string' && first !== '') return first
     } catch {
       // Fall through to home below.
@@ -129,18 +89,20 @@ export const dsh = {
     return home
   },
 
-  /** Full workspace roster + the archived-session set. */
-  async listWorkspaces(): Promise<{ items: WorkspaceView[]; archivedSessionIds: string[] }> {
-    return (await dsh.call('workspace.list', {})) as {
-      items: WorkspaceView[]
+  /** Full workspace roster (roster order + owned-session order) + archived set. */
+  async listWorkspaces(): Promise<{ workspaces: CodedWorkspace[]; archivedSessionIds: string[] }> {
+    return (await window.dshDesktop.dsh.invoke('coded.workspace.list', {})) as {
+      workspaces: CodedWorkspace[]
       archivedSessionIds: string[]
     }
   },
 
-  /** Every persisted session, updatedAt descending. */
-  async listSessions(): Promise<SessionSummary[]> {
-    const value = (await dsh.call('session.list', {})) as { items: SessionSummary[] }
-    return value.items
+  /** Every session as a semantic roster row (title/phase/ownership filled). */
+  async listSessions(): Promise<CodedSession[]> {
+    const value = (await window.dshDesktop.dsh.invoke('coded.session.list', {})) as {
+      sessions: CodedSession[]
+    }
+    return value.sessions
   },
 
   /** Tail page of a session's transcript, as semantic items. */
@@ -149,22 +111,26 @@ export const dsh = {
   },
 
   async renameSession(sessionId: string, title: string): Promise<void> {
-    await dsh.call('session.rename', { sessionId, title })
+    await window.dshDesktop.dsh.invoke('coded.session.rename', { sessionId, title })
   },
 
-  /** Fork a session; resolves with the new session's id. */
+  /** Fork a session; resolves with the new session's id when the backend says. */
   async forkSession(sessionId: string): Promise<string | null> {
-    const value = (await dsh.call('session.fork', { sessionId })) as { sessionId?: string }
+    const value = (await window.dshDesktop.dsh.invoke('coded.session.fork', { sessionId })) as {
+      sessionId?: string
+    }
     return value.sessionId ?? null
   },
 
   async archiveSession(sessionId: string): Promise<void> {
-    await dsh.call('workspace.archiveSession', { sessionId })
+    await window.dshDesktop.dsh.invoke('coded.session.archive', { sessionId })
   },
 
   /** Abort the session's running turn. Resolves with the carrier receipt. */
   async cancelSession(sessionId: string): Promise<{ accepted: boolean }> {
-    return (await dsh.call('session.cancel', { sessionId })) as { accepted: boolean }
+    return (await window.dshDesktop.dsh.invoke('coded.session.cancel', { sessionId })) as {
+      accepted: boolean
+    }
   },
 
   /** Remove one queued message (S2.3 surface; steer/edit come later). */
@@ -209,16 +175,19 @@ export const dsh = {
   },
 
   async renameWorkspace(workspaceId: string, title: string): Promise<void> {
-    await dsh.call('workspace.rename', { workspaceId, title })
+    await window.dshDesktop.dsh.invoke('coded.workspace.rename', { workspaceId, title })
   },
 
+  /** Detach a workspace from the roster (its folder and sessions remain). */
   async deleteWorkspace(workspaceId: string): Promise<void> {
-    await dsh.call('workspace.delete', { workspaceId })
+    await window.dshDesktop.dsh.invoke('coded.workspace.delete', { workspaceId })
   },
 
   /** Create a session; roots at a workspace when given, else at cwd. */
   async createSession(opts: { workspaceId?: string; cwd?: string }): Promise<string> {
-    const value = (await dsh.call('session.create', opts)) as { sessionId: string }
+    const value = (await window.dshDesktop.dsh.invoke('coded.session.create', opts)) as {
+      sessionId: string
+    }
     return value.sessionId
   },
 

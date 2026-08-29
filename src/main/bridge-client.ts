@@ -97,7 +97,7 @@ export class BridgeClient {
   }
 
   /** Open a downstream stream; resolves with the shell-side stream id. */
-  openStream(stream: 'mux' | 'host', payload: unknown, handlers: StreamHandlers): Promise<number> {
+  openStream(stream: 'events', payload: unknown, handlers: StreamHandlers): Promise<number> {
     if (this.statusValue !== 'connected' || this.socket === null) {
       return Promise.reject(new Error('bridge not connected'))
     }
