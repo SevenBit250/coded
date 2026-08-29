@@ -805,6 +805,16 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     }
   }, [])
   const presetsSupported = caps.includes('presets') && presets !== null && presets.length > 0
+  // Draft preselect: the deployment default preset is what a new session will
+  // actually run, so the selector shows it instead of an empty placeholder —
+  // display matches the effective value. An explicit staged pick or a
+  // session's own echo always takes precedence.
+  useEffect(() => {
+    if (selectedSession !== null) return
+    if (modeValue !== null) return
+    const fallback = presets?.find((p) => p.isDefault === true) ?? presets?.[0]
+    if (fallback !== undefined) setModeValue(fallback.id)
+  }, [presets, selectedSession, modeValue])
   // CodedBridge session: transcript + composer draft.
   const [draft, setDraft] = useState('')
   const submitDraft = (): void => {
