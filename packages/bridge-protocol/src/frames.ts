@@ -1,19 +1,22 @@
 /**
- * CodedBridge wire frames (proto 1).
+ * CodedBridge wire frames (proto 2, channel model).
  *
  * Transport: one local pipe (Windows named pipe / POSIX UDS), NDJSON framing —
  * one JSON frame per `\n`-terminated line, UTF-8. Both ends are Node.
  *
- * Layering: every frame is Coded-owned. The rpc plane speaks the semantic
- * `coded.*` method surface (codedbridge-protocol.md §2) — backend dialects
- * live and die inside the adapter; the downstream `events` stream carries
- * synthesized CodedSemanticEvents whose envelope IS the event object.
+ * Layering: the frame type names a CHANNEL (a vocabulary domain), and the
+ * payload discriminates the frame's role inside that channel — `method` marks
+ * a request (shell → adapter), `rsp` the exactly-one reply (adapter → shell),
+ * `e` a data item and `eof` the terminal of a subscription. One discrimination
+ * philosophy everywhere: classification lives in the payload; the frame plane
+ * stays frozen while the payload unions grow. Direction policing is therefore
+ * shape × direction, not type × direction (see coded-adapter's server).
  */
 
 import { z } from 'zod'
 
 /** Wire protocol version. Bump on any breaking frame-shape change. */
-export const BRIDGE_PROTOCOL_VERSION = 1
+export const BRIDGE_PROTOCOL_VERSION = 2
 
 /** Which end of the pipe a hello frame came from. */
 export type BridgeSide = 'adapter' | 'shell'
@@ -30,126 +33,122 @@ export const bridgeHelloSchema = z.object({
   proto: z.number().int(),
   /** Implementation version (adapter package / shell app), informational. */
   version: z.string(),
-  /** Capability tokens; empty in v0, additive by design. */
+  /** Capability tokens; additive by design, unknown tokens are ignored. */
   capabilities: z.array(z.string()).default([]),
 })
 export type BridgeHello = z.infer<typeof bridgeHelloSchema>
 
 /**
- * Unary RPC: `method` is a semantic `coded.*` name (§2.2), `payload` its
- * request document. `id` is minted by the shell and echoed on exactly one
- * reply frame.
+ * Reply document of the call channels: the success value, or a business
+ * failure with a stable semantic code (`bad-request`, `unknown-method`,
+ * `title-invalid`, `backend`, … — codedbridge-protocol.md §2.5).
  */
-export const bridgeRpcCallSchema = z.object({
-  t: z.literal('rpc'),
+export const bridgeRspSchema = z.union([
+  z.object({ ok: z.literal(true), value: z.unknown() }),
+  z.object({ ok: z.literal(false), code: z.string(), message: z.string() }),
+])
+export type BridgeRsp = z.infer<typeof bridgeRspSchema>
+
+const callRequestShape = {
+  /** Shell-minted call id; the reply echoes it on exactly one frame. */
   id: z.number().int(),
   method: z.string(),
   payload: z.unknown(),
-})
-export type BridgeRpcCall = z.infer<typeof bridgeRpcCallSchema>
-
-/** RPC success reply. `payload` is the Coded-domain response document. */
-export const bridgeRpcOkSchema = z.object({
-  t: z.literal('rpc-ok'),
+}
+const callReplyShape = {
   id: z.number().int(),
-  payload: z.unknown(),
-})
-export type BridgeRpcOk = z.infer<typeof bridgeRpcOkSchema>
-
-/** Structured failure carried inside a reply frame (never a transport error). */
-export const bridgeErrorSchema = z.object({
-  message: z.string(),
-  /** Stable machine-readable code when the source provides one. */
-  code: z.string().optional(),
-  data: z.unknown().optional(),
-})
-export type BridgeError = z.infer<typeof bridgeErrorSchema>
-
-/** RPC failure reply. */
-export const bridgeRpcErrSchema = z.object({
-  t: z.literal('rpc-err'),
-  id: z.number().int(),
-  error: bridgeErrorSchema,
-})
-export type BridgeRpcErr = z.infer<typeof bridgeRpcErrSchema>
-
-/** The downstream semantic event stream (proto 1: `events` only). */
-export const bridgeStreamNameSchema = z.enum(['events'])
-export type BridgeStreamName = z.infer<typeof bridgeStreamNameSchema>
-
-/**
- * Open the downstream semantic event stream. Shell-minted `id` keys every
- * frame/end of this stream.
- */
-export const bridgeStreamOpenSchema = z.object({
-  t: z.literal('stream-open'),
-  id: z.number().int(),
-  stream: bridgeStreamNameSchema,
-  payload: z.unknown(),
-})
-export type BridgeStreamOpen = z.infer<typeof bridgeStreamOpenSchema>
-
-/**
- * stream-open payload (opaque to the frame schema, additive by design).
- * `types` asks the adapter to forward only those mux/host frame types — the
- * big `session/projection` deltas are the prime candidate to filter OUT when
- * a consumer only renders session/event traffic.
- */
-export interface BridgeStreamOpenPayload {
-  types?: string[]
+  rsp: bridgeRspSchema,
 }
 
 /**
- * Adapter confirms the subscription is established (host-side listeners are
- * attached, baseline replay starting) — the shell's `onOpen` signal.
+ * The read-only channel: query-class methods ride out as request variants and
+ * come back as reply variants on the same frame type. Queries are idempotent —
+ * a timed-out query may be re-issued verbatim, a cached answer may be kept.
  */
-export const bridgeStreamReadySchema = z.object({
-  t: z.literal('stream-ready'),
-  id: z.number().int(),
-})
-export type BridgeStreamReady = z.infer<typeof bridgeStreamReadySchema>
+export const bridgeQuerySchema = z.union([
+  z.object({ t: z.literal('query'), ...callRequestShape }),
+  z.object({ t: z.literal('query'), ...callReplyShape }),
+])
+export type BridgeQuery = z.infer<typeof bridgeQuerySchema>
 
 /**
- * One downstream frame. `envelope` is a full-form ServerRequest document
- * (`{ type: 'server-request', rpcId, method, payload }`) — byte-compatible
- * with the harness WebSocket downlink carrier, so shell-side parsing code is
- * shared with the browser client shape.
+ * The mutation channel: control-class methods plus the reserved transport
+ * lifecycle methods (`stream.subscribe` / `stream.unsubscribe`). Never
+ * blindly retried — a duplicated control may duplicate its effect.
  */
-export const bridgeStreamFrameSchema = z.object({
-  t: z.literal('stream-frame'),
-  id: z.number().int(),
-  envelope: z.unknown(),
-})
-export type BridgeStreamFrame = z.infer<typeof bridgeStreamFrameSchema>
+export const bridgeControlSchema = z.union([
+  z.object({ t: z.literal('control'), ...callRequestShape }),
+  z.object({ t: z.literal('control'), ...callReplyShape }),
+])
+export type BridgeControl = z.infer<typeof bridgeControlSchema>
 
-/** Stream finished from the adapter side (host closed it or the source ended). */
-export const bridgeStreamEndSchema = z.object({
-  t: z.literal('stream-end'),
-  id: z.number().int(),
-  reason: z.string().optional(),
-})
-export type BridgeStreamEnd = z.infer<typeof bridgeStreamEndSchema>
+/** Reserved control methods (transport lifecycle; not part of `coded.*`). */
+export const STREAM_SUBSCRIBE_METHOD = 'stream.subscribe'
+export const STREAM_UNSUBSCRIBE_METHOD = 'stream.unsubscribe'
 
-/** Shell-side cancellation of a stream it opened. */
-export const bridgeStreamAbortSchema = z.object({
-  t: z.literal('stream-abort'),
-  id: z.number().int(),
+export const bridgeStreamSubscribePayloadSchema = z.object({
+  /** Shell-minted stream id, echoed on every frame of this subscription. */
+  streamId: z.number().int(),
+  /** Semantic event names to keep; omit for all. Fixed per subscription. */
+  types: z.array(z.string()).optional(),
 })
-export type BridgeStreamAbort = z.infer<typeof bridgeStreamAbortSchema>
+export const bridgeStreamUnsubscribePayloadSchema = z.object({
+  streamId: z.number().int(),
+})
 
-/** Every frame on the wire, discriminated by `t`. */
-export const bridgeFrameSchema = z.discriminatedUnion('t', [
+/**
+ * The data channel (adapter → shell): one frame per semantic event, then at
+ * most one terminal frame. `eof` without `reason` is a clean end (including
+ * unsubscribe); with `reason` the source failed. A disconnected connection
+ * implies eof on every live stream without a frame.
+ */
+export const bridgeStreamSchema = z.union([
+  z.object({ t: z.literal('stream'), id: z.number().int(), e: z.unknown() }),
+  z.object({
+    t: z.literal('stream'),
+    id: z.number().int(),
+    eof: z.literal(true),
+    reason: z.string().optional(),
+  }),
+])
+export type BridgeStream = z.infer<typeof bridgeStreamSchema>
+
+/** Every frame on the wire, classified by channel. */
+export const bridgeFrameSchema = z.union([
   bridgeHelloSchema,
-  bridgeRpcCallSchema,
-  bridgeRpcOkSchema,
-  bridgeRpcErrSchema,
-  bridgeStreamOpenSchema,
-  bridgeStreamReadySchema,
-  bridgeStreamFrameSchema,
-  bridgeStreamEndSchema,
-  bridgeStreamAbortSchema,
+  bridgeQuerySchema,
+  bridgeControlSchema,
+  bridgeStreamSchema,
 ])
 export type BridgeFrame = z.infer<typeof bridgeFrameSchema>
 
 /** Frame `t` values, for exhaustiveness checks on both ends. */
 export type BridgeFrameType = BridgeFrame['t']
+
+/**
+ * Method → channel class. The single source of truth shared by the shell
+ * (channel selection) and the adapter (class validation — a method arriving
+ * on the wrong channel is a `bad-request`). The registry test pins the
+ * convention: list/describe/modes/history-shaped methods are query-class.
+ */
+export type CodedMethodClass = 'query' | 'control'
+export const CODED_METHOD_CLASS: Readonly<Record<string, CodedMethodClass>> = {
+  'coded.describe': 'query',
+  'coded.workspace.list': 'query',
+  'coded.session.list': 'query',
+  'coded.session.history': 'query',
+  'coded.models.list': 'query',
+  'coded.permission.modes': 'query',
+  'coded.session.create': 'control',
+  'coded.session.rename': 'control',
+  'coded.session.fork': 'control',
+  'coded.session.archive': 'control',
+  'coded.session.cancel': 'control',
+  'coded.session.send': 'control',
+  'coded.session.respond': 'control',
+  'coded.queue.remove': 'control',
+  'coded.models.select': 'control',
+  'coded.permission.set': 'control',
+  'coded.workspace.rename': 'control',
+  'coded.workspace.delete': 'control',
+}

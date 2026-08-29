@@ -3,8 +3,9 @@
  * pipe to the harness adapter plugin, with automatic reconnect.
  *
  * Contract mirrors the adapter's server (packages/adapter/src/server.ts in
- * coded-adapter): the adapter opens with hello, the shell echoes, then unary
- * RPCs correlate by shell-minted ids and downstream streams by stream ids.
+ * coded-adapter): the adapter opens with hello, the shell echoes, then calls
+ * on the query/control channels correlate by shell-minted ids and downstream
+ * subscriptions by stream ids.
  * Disconnection rejects in-flight calls, ends every stream (so renderer-side
  * reconnect generations can rebuild), and the client keeps retrying with
  * backoff until `stop()`.
@@ -12,7 +13,14 @@
 
 import { connect, type Socket } from 'node:net'
 import { once } from 'node:events'
-import { defaultPipePath, bridgeFrameSchema, BRIDGE_PROTOCOL_VERSION } from '@coded/bridge-protocol'
+import {
+  CODED_METHOD_CLASS,
+  defaultPipePath,
+  bridgeFrameSchema,
+  BRIDGE_PROTOCOL_VERSION,
+  STREAM_SUBSCRIBE_METHOD,
+  STREAM_UNSUBSCRIBE_METHOD,
+} from '@coded/bridge-protocol'
 import type { BridgeFrame } from '@coded/bridge-protocol'
 
 export type BridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'stopped'
@@ -80,36 +88,67 @@ export class BridgeClient {
   }
 
   /**
-   * Unary RPC. Resolves with the carrier's full-form ServerResponse document;
-   * rejects on transport failure (call again after the status returns to
-   * connected) or an adapter-side `rpc-err`.
+   * One call on the method's channel (registry-decided). Resolves with the
+   * response value; rejects on transport failure (call again after the status
+   * returns to connected) or a business error (`rsp.ok:false`).
    */
   call(method: string, payload: unknown): Promise<unknown> {
     if (this.stopped) return Promise.reject(new Error('bridge stopped'))
     if (this.statusValue !== 'connected' || this.socket === null) {
       return Promise.reject(new Error('bridge not connected'))
     }
+    const channel = CODED_METHOD_CLASS[method] ?? 'control'
     const id = this.nextCallId++
     return new Promise<unknown>((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
-      this.send({ t: 'rpc', id, method, payload })
+      this.send(
+        channel === 'query'
+          ? { t: 'query', id, method, payload }
+          : { t: 'control', id, method, payload },
+      )
     })
   }
 
-  /** Open a downstream stream; resolves with the shell-side stream id. */
-  openStream(stream: 'events', payload: unknown, handlers: StreamHandlers): Promise<number> {
+  /**
+   * Open a downstream subscription; resolves with the shell-side stream id
+   * once the adapter acks (frames only flow after that ack). `payload` is the
+   * subscribe document ({ types? }).
+   */
+  openStream(_stream: 'events', payload: unknown, handlers: StreamHandlers): Promise<number> {
     if (this.statusValue !== 'connected' || this.socket === null) {
       return Promise.reject(new Error('bridge not connected'))
     }
-    const id = this.nextStreamId++
-    this.streams.set(id, handlers)
-    this.send({ t: 'stream-open', id, stream, payload })
-    return Promise.resolve(id)
+    const streamId = this.nextStreamId++
+    this.streams.set(streamId, handlers)
+    const id = this.nextCallId++
+    const types = (payload as { types?: string[] } | null | undefined)?.types
+    return new Promise<number>((resolve, reject) => {
+      this.pending.set(id, {
+        resolve: () => {
+          handlers.onOpen?.()
+          resolve(streamId)
+        },
+        reject: (error) => {
+          this.streams.delete(streamId)
+          reject(error)
+        },
+      })
+      this.send({
+        t: 'control',
+        id,
+        method: STREAM_SUBSCRIBE_METHOD,
+        payload: { streamId, ...(types === undefined ? {} : { types }) },
+      })
+    })
   }
 
+  /** Tear a subscription down. Intentionally silent: no onEnd (renderer-side
+   *  resubscribe logic keys off unexpected ends, not planned ones). */
   abortStream(id: number): void {
     if (this.statusValue !== 'connected') return
-    this.send({ t: 'stream-abort', id })
+    const callId = this.nextCallId++
+    this.pending.set(callId, { resolve: () => {}, reject: () => {} })
+    this.send({ t: 'control', id: callId, method: STREAM_UNSUBSCRIBE_METHOD, payload: { streamId: id } })
     this.streams.delete(id)
   }
 
@@ -260,44 +299,37 @@ export class BridgeClient {
 
   private dispatch(frame: BridgeFrame): void {
     switch (frame.t) {
-      case 'rpc-ok': {
+      case 'query':
+      case 'control': {
+        // The adapter only ever speaks the reply half of a call channel; a
+        // request variant arriving here is a protocol breach.
+        if (!('rsp' in frame)) {
+          this.log(`protocol breach: adapter sent a ${frame.t} request`)
+          this.socket?.destroy()
+          return
+        }
         const pending = this.pending.get(frame.id)
         if (pending !== undefined) {
           this.pending.delete(frame.id)
-          pending.resolve(frame.payload)
+          if (frame.rsp.ok) pending.resolve(frame.rsp.value)
+          else pending.reject(new Error(frame.rsp.message))
         }
         return
       }
-      case 'rpc-err': {
-        const pending = this.pending.get(frame.id)
-        if (pending !== undefined) {
-          this.pending.delete(frame.id)
-          pending.reject(new Error(frame.error.message))
+      case 'stream': {
+        if ('eof' in frame) {
+          const handlers = this.streams.get(frame.id)
+          if (handlers !== undefined) {
+            this.streams.delete(frame.id)
+            handlers.onEnd?.(frame.reason)
+          }
+          return
         }
+        this.streams.get(frame.id)?.onFrame(frame.e)
         return
       }
-      case 'stream-ready': {
-        this.streams.get(frame.id)?.onOpen?.()
-        return
-      }
-      case 'stream-frame': {
-        this.streams.get(frame.id)?.onFrame(frame.envelope)
-        return
-      }
-      case 'stream-end': {
-        const handlers = this.streams.get(frame.id)
-        if (handlers !== undefined) {
-          this.streams.delete(frame.id)
-          handlers.onEnd?.(frame.reason)
-        }
-        return
-      }
-      // Shell-direction frames must never arrive from the adapter.
-      case 'rpc':
-      case 'stream-open':
-      case 'stream-abort':
       case 'hello':
-        this.log(`protocol breach: adapter sent ${frame.t}`)
+        this.log('protocol breach: adapter sent a duplicate hello')
         this.socket?.destroy()
         return
     }
