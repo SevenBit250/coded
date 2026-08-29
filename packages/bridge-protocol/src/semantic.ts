@@ -34,7 +34,13 @@ export interface CodedModelSelection {
   reasoningEffort?: string
 }
 
-/** `coded.models.list` response. */
+/**
+ * `coded.models.list` response. With `sessionId` the snapshot is
+ * session-scoped (its live selection). Without one it is the deployment
+ * picture for pre-session surfaces: `current` mirrors the host default
+ * selection (what the next session starts from) and `routes` is the
+ * host-wide catalog.
+ */
 export interface CodedModelsSnapshot {
   current: CodedModelSelection
   /** False = the current provider has no live adapter; shell blocks input. */

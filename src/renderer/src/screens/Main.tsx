@@ -20,6 +20,8 @@ import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
 import { loadSidebarView, saveSidebarView } from '../sidebar-view'
 import type { SidebarViewState } from '../sidebar-view'
+import { loadLastWorkspace, saveLastWorkspace } from '../last-workspace'
+import type { LastWorkspace } from '../last-workspace'
 import { ChatStream } from '../dsh/ChatStream'
 import { ApprovalCard, QuestionCard } from '../dsh/gates'
 import { useDshSession } from '../dsh/use-dsh-session'
@@ -636,15 +638,42 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     if (!present) setSelectedSession(null)
   }, [directory.workspaces, selectedSession])
 
-  // Default the composer project to the first workspace, once (the explicit
-  // "不在项目中工作" choice stays respected afterwards).
-  const projectDefaultedRef = useRef(false)
+  // Default the composer project to the last-exit workspace once the roster
+  // lands (id match, else path anchor, else first); the explicit
+  // "不在项目中工作" pick persists as a null id and is honored on restore.
+  const [projectDefaulted, setProjectDefaulted] = useState(false)
+  const lastWorkspaceRef = useRef<LastWorkspace | null>(loadLastWorkspace())
   useEffect(() => {
-    if (!projectDefaultedRef.current && directory.workspaces.length > 0) {
-      projectDefaultedRef.current = true
+    if (projectDefaulted || directory.workspaces.length === 0) return
+    setProjectDefaulted(true)
+    const stored = lastWorkspaceRef.current
+    if (stored === null) {
+      // First run: fall back to the first workspace.
       setSelectedProject(directory.workspaces[0].id)
+      return
     }
-  }, [directory.workspaces])
+    if (stored.id === null) {
+      setSelectedProject(null)
+      return
+    }
+    const byId = directory.workspaces.find((w) => w.id === stored.id)
+    if (byId !== undefined) {
+      setSelectedProject(byId.id)
+      return
+    }
+    // Roster ids may not survive a backend restart — the path is the anchor.
+    const byPath =
+      stored.path !== null ? directory.workspaces.find((w) => w.path === stored.path) : undefined
+    setSelectedProject(byPath?.id ?? directory.workspaces[0].id)
+  }, [projectDefaulted, directory.workspaces])
+  // Persist every post-default choice (the explicit null included); skipped
+  // until the default has landed so a slow roster never clobbers the stored
+  // value with a transient null.
+  useEffect(() => {
+    if (!projectDefaulted) return
+    const path = workspaces.find((w) => w.id === selectedProject)?.path ?? null
+    saveLastWorkspace({ id: selectedProject, path })
+  }, [projectDefaulted, selectedProject, workspaces])
 
   /** Open the rename dialog pre-filled for a workspace or session row. */
   const openRename = (target: NonNullable<typeof renameTarget>, initial: string): void => {
@@ -770,20 +799,29 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     reasoningEffort?: string
   } | null>(null)
   useEffect(() => {
-    // A fresh draft keeps the last roster visible (no clear on null) — only
-    // an active session pulls its own snapshot.
-    if (selectedSession === null) return
+    // Session-scoped snapshot for an active session; the deployment picture
+    // (host default + host-wide catalog) for the home draft. Pulled when the
+    // bridge (re)connects — a mount-time fetch would race the connection.
     let stale = false
-    void dsh
-      .listModels(selectedSession)
-      .then((snapshot) => {
-        if (!stale) setModels(snapshot)
-      })
-      .catch((error: unknown) => {
-        console.log(`[composer] models load failed: ${String(error)}`)
-      })
+    const load = (): void => {
+      void dsh
+        .listModels(selectedSession ?? undefined)
+        .then((snapshot) => {
+          if (!stale) setModels(snapshot)
+        })
+        .catch((error: unknown) => {
+          console.log(`[composer] models load failed: ${String(error)}`)
+        })
+    }
+    void dsh.status().then((s) => {
+      if (s === 'bridge-connected' && !stale) load()
+    })
+    const off = dsh.onStatus((s) => {
+      if (s === 'bridge-connected' && !stale) load()
+    })
     return () => {
       stale = true
+      off()
     }
   }, [selectedSession])
   // Permission preset roster: a deployment fact, fetched once the bridge is
@@ -855,8 +893,24 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     reasoningEffort?: string
   }): void => {
     if (selectedSession === null) {
-      // Pre-session choice: remember it; applied when the session is created.
+      // Pre-session choice: remember it (applied when the session is created)
+      // and reflect it locally — the home snapshot has no session to confirm
+      // with, but the chip must still follow the pick.
       pendingRef.current = { ...pendingRef.current, ...selection }
+      setModels((prev) =>
+        prev === null
+          ? prev
+          : {
+              ...prev,
+              current: {
+                provider: selection.provider,
+                model: selection.model,
+                ...(selection.reasoningEffort !== undefined
+                  ? { reasoningEffort: selection.reasoningEffort }
+                  : {}),
+              },
+            },
+      )
       return
     }
     void dsh
@@ -909,8 +963,10 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
       ...(r.description !== undefined ? { description: r.description } : {}),
     }))
     // Advisory catalog: the current route may be absent — keep it visible.
+    // An empty selection (deployment without a default) stays absent: the
+    // face falls back to the placeholder.
     const currentKey = modelKey(models.current.provider, models.current.model)
-    if (!options.some((o) => o.id === currentKey)) {
+    if (models.current.model !== '' && !options.some((o) => o.id === currentKey)) {
       options.push({ id: currentKey, label: models.current.model })
     }
     return options

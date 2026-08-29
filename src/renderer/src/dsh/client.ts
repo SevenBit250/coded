@@ -4,11 +4,11 @@
  * of any harness client class: the renderer speaks only the CodedBridge
  * private protocol, so harness upgrades cannot reach this code.
  *
- * Proto 1 posture: every unary goes through the semantic `coded.*` surface
+ * Proto 2 posture: every unary goes through the semantic `coded.*` surface
  * (codedbridge-protocol.md §2) and answers with Coded-domain payloads typed
  * by @coded/bridge-protocol/semantic — no backend envelope, no backend method
- * names. Downstream frames arrive on the single `events` stream, envelope =
- * the CodedSemanticEvent itself.
+ * names. Downstream frames arrive on the `events` stream (a control-channel
+ * subscription), envelope = the CodedSemanticEvent itself.
  */
 
 import type {
@@ -143,9 +143,15 @@ export const dsh = {
    *     arrive as Coded-domain shapes (no backend envelope) — see
    *     codedbridge-protocol.md §2. ---- */
 
-  /** Model roster + current selection for a session. */
-  async listModels(sessionId: string): Promise<CodedModelsSnapshot> {
-    return (await window.dshDesktop.dsh.invoke('coded.models.list', { sessionId })) as CodedModelsSnapshot
+  /**
+   * Model roster + current selection. With a sessionId the snapshot is that
+   * session's; without one it is the deployment picture (host default
+   * selection + host-wide catalog) for pre-session surfaces.
+   */
+  async listModels(sessionId?: string): Promise<CodedModelsSnapshot> {
+    return (await window.dshDesktop.dsh.invoke('coded.models.list', {
+      ...(sessionId === undefined ? {} : { sessionId }),
+    })) as CodedModelsSnapshot
   },
 
   /** Select the session's model (and optional reasoning effort). */
