@@ -36,8 +36,12 @@ export interface DshDirectory {
   workspaces: DirectoryWorkspace[]
   /** Re-pull both baselines (after mutations the host does not echo). */
   refresh: () => void
-  /** Keep a shell-created session visible in the sidebar even while blank
-   *  (the web hides blank sessions; Coded's + must show what it created). */
+  /**
+   * Keep a just-sent session visible in the sidebar through the blank→running
+   * gap: the shell's lazy create pins it at send time, and the first phase
+   * event (or baseline refresh) clears the blank bit naturally. Without the
+   * pin the card the user's send just earned would flicker away.
+   */
   pinSession: (sessionId: string) => void
 }
 
@@ -68,8 +72,8 @@ function toDirectorySession(session: CodedSession): DirectorySession {
 
 /** Compose the sidebar rows: workspaces in roster order, their sessions in
  *  owned order, blank and archived sessions hidden — except blank sessions
- *  the shell itself created (pinned), which stay visible until their first
- *  turn clears the blank bit naturally. */
+ *  the shell pinned at send time (lazy create), which stay visible until
+ *  their first turn clears the blank bit naturally. */
 function compose(
   workspaces: CodedWorkspace[],
   sessions: Map<string, DirectorySession>,
@@ -104,7 +108,7 @@ export function useDshDirectory(): DshDirectory {
     setWorkspaces(compose(workspacesRef.current, sessionsRef.current, archivedRef.current, pinnedRef.current))
   }, [])
 
-  /** Keep one session visible even while blank (shell-created). */
+  /** Keep one session visible through the send-time blank gap (lazy create). */
   const pinSession = useCallback(
     (sessionId: string): void => {
       pinnedRef.current.add(sessionId)

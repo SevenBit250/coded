@@ -15,6 +15,7 @@ import {
   MenuDivider,
   MenuLabel,
   Dialog,
+  useShortcut,
 } from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
 import type { ThemeName } from '../theme'
@@ -113,9 +114,12 @@ function MenuIcon({ name }: MenuIconProps): ReactElement {
 function SidebarTopRow({
   onToggle,
   collapsed = false,
+  onNewSession,
 }: {
   onToggle: () => void
   collapsed?: boolean
+  /** The collapsed bar's chat button: same lazy draft as the menu's 新建任务. */
+  onNewSession?: () => void
 }): ReactElement {
   return (
     <>
@@ -158,6 +162,7 @@ function SidebarTopRow({
         <IconButton
           className="chat-new"
           label="新建对话"
+          onClick={onNewSession}
           icon={
             /* lucide:message-circle-plus */
             <Icon>
@@ -531,6 +536,8 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   /** The agent preset shown in the composer selector: the active session's
    *  pinned one, or the draft's staged pick. */
   const [modeValue, setModeValue] = useState<string | null>(null)
+  /** Composer input focus target (the + affordance lands the user here). */
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
   // Rename dialog: which row is being renamed, its draft and any error.
   const [renameTarget, setRenameTarget] = useState<
     { kind: 'workspace'; id: string } | { kind: 'session'; wsId: string; id: string } | null
@@ -705,14 +712,22 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     }
   }
 
-  /** New session in a workspace: create blank (hidden in the list until its
-   *  first turn, harness parity) and open it immediately. */
+  /** Leave any active session and land in a fresh composer draft — the shared
+   *  landing of every "new" affordance (menu 新建任务, Ctrl+N, the collapsed
+   *  bar's chat button, and the workspace +). Nothing is created until send. */
+  const startDraft = (): void => {
+    setSelectedSession(null)
+    setModeValue(pendingRef.current?.presetId ?? null)
+    composerRef.current?.focus()
+  }
+  useShortcut('Mod+N', startDraft)
+
+  /** New session in a workspace: switch to a draft rooted there — nothing is
+   *  created until the first send, so no card appears for a conversation the
+   *  user never started (web parity: blank sessions never surface). */
   const addSession = (wsId: string): void => {
-    void dsh.createSession({ workspaceId: wsId }).then((id) => {
-      directory.pinSession(id)
-      setSelectedSession(id)
-      applyPending(id)
-    })
+    setSelectedProject(wsId)
+    startDraft()
   }
 
   /** Route a session row-menu action (shared by grouped and flat views). */
@@ -1092,6 +1107,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           <SidebarTopRow
             onToggle={() => setSidebarOpen(!sidebarOpen)}
             collapsed={!sidebarOpen}
+            onNewSession={startDraft}
           />
         </div>
         <div className="anchor-right">
@@ -1110,7 +1126,11 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
         <nav className="sidebar" style={{ width: sidebarWidth }}>
           <div className="menu">
             {MENU.map((item) => (
-              <button key={item.label} className="menu-item">
+              <button
+                key={item.label}
+                className="menu-item"
+                onClick={item.icon === 'new-task' ? startDraft : undefined}
+              >
                 <span className="menu-ico">
                   <MenuIcon name={item.icon} />
                 </span>
@@ -1371,6 +1391,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
               </div>
             )}
             <textarea
+              ref={composerRef}
               className="composer-input"
               rows={3}
               value={draft}
