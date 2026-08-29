@@ -627,6 +627,15 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
     [directory.workspaces, selectedSession],
   )
 
+  // The selected session must stay on the roster: archiving it (or removing
+  // its whole workspace) drops it from the sidebar, and the selection has to
+  // follow — otherwise the chat area keeps rendering a ghost transcript.
+  useEffect(() => {
+    if (selectedSession === null) return
+    const present = directory.workspaces.some((w) => w.sessions.some((s) => s.id === selectedSession))
+    if (!present) setSelectedSession(null)
+  }, [directory.workspaces, selectedSession])
+
   // Default the composer project to the first workspace, once (the explicit
   // "不在项目中工作" choice stays respected afterwards).
   const projectDefaultedRef = useRef(false)
