@@ -39,7 +39,7 @@ export interface DshBridgeSurface {
    * shell-side stream id once dispatched (open confirmation arrives through
    * handlers.onOpen).
    */
-  openStream: (stream: 'mux' | 'host', payload: unknown, handlers: DshStreamHandlers) => Promise<number>
+  openStream: (stream: 'mux' | 'host' | 'events', payload: unknown, handlers: DshStreamHandlers) => Promise<number>
   /** Shell-side cancellation of an open stream. */
   abortStream: (id: number) => void
 }

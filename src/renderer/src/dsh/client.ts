@@ -16,47 +16,24 @@
  */
 
 import type {
+  CodedHistoryPage,
   CodedModelSelection,
   CodedModelsSnapshot,
   CodedPermissionModes,
+  CodedSemanticEvent,
+  CodedTranscriptItem,
+} from '@coded/bridge-protocol'
+
+// Re-exported for the hooks/components that consume the semantic domain.
+export type {
+  CodedContentPart,
+  CodedHistoryPage,
+  CodedSemanticEvent,
+  CodedTranscriptItem,
 } from '@coded/bridge-protocol'
 
 /** Lifecycle status pushed by the shell (see shared/bridge.ts). */
 export type DshStatus = import('../../../shared/bridge').DshBridgeStatus
-
-/** One session/event frame as it crosses the bridge. */
-export interface SessionEventFrame {
-  type: 'session/event'
-  sessionId: string
-  /** SessionEvent: payload lives in the `data` slot (e.g. data.chunk). */
-  event: { type: string; data?: unknown; [key: string]: unknown }
-  /** Host-computed tool presentation, present on tool/call + tool/result. */
-  view?: { for: 'call' | 'result'; view: { card?: string; title?: string; [key: string]: unknown } }
-}
-
-/** The slice of StreamChunk (dsh-llm) this client surfaces. */
-export interface TextChunk {
-  type: string
-  text?: string
-}
-
-/** approval/requested mux frame (payload slot; the answerable id rides the
- *  envelope's rpcId, handed to handlers alongside). */
-export interface ApprovalRequestedFrame {
-  type: 'approval/requested'
-  sessionId: string
-  approvalId: string
-  toolName: string
-  callId?: string
-  reason?: string
-}
-
-export interface ApprovalResolvedFrame {
-  type: 'approval/resolved'
-  sessionId: string
-  approvalId: string
-  outcome: 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
-}
 
 /** AskUserQuestionItem (dsh-user-questions) as it crosses the wire. */
 export interface QuestionItem {
@@ -69,36 +46,12 @@ export interface QuestionItem {
   intent?: { kind: 'plan-review'; approve: string }
 }
 
-export interface QuestionRequestedFrame {
-  type: 'question/requested'
-  sessionId: string
-  questions: QuestionItem[]
-}
-
-export interface QuestionResolvedFrame {
-  type: 'question/resolved'
-  sessionId: string
-  questionRpcId: string
-  outcome: 'answered' | 'cancelled'
-}
-
-/** session/queue mux frame — a FULL snapshot of the session's message queue. */
-export interface SessionQueueFrame {
-  type: 'session/queue'
-  sessionId: string
-  items: {
-    id: string
-    placement: 'queued' | 'steering' | 'context'
-    message: { role: string; content: { type: string; text?: string }[] }
-  }[]
-}
-
 /** rpcResult slot of a respond call: answer value, or the cancel shape. */
 export type RespondResult =
   | { ok: true; value: unknown }
   | { ok: false; error: { code: string; message: string } }
 
-/** ---- Directory domain (S2.1): sessions/workspaces listing + host stream. ---- */
+/** ---- Directory domain (S2.1): sessions/workspaces listing. ---- */
 
 /** session.list row. Titles ride the projection baseline, not a field. */
 export interface SessionSummary {
@@ -120,27 +73,6 @@ export interface WorkspaceView {
   title: string
   sessionIds: string[]
 }
-
-/** session.history response page. */
-export interface SessionHistory {
-  events: {
-    event: { type: string; data?: unknown }
-    view?: { for: 'call' | 'result'; view: { card?: string; title?: string; [key: string]: unknown } }
-  }[]
-  hasMore: boolean
-}
-
-/** Host-stream frames (the host-side counterpart of the mux stream). A closed
- *  union on purpose: unknown frame kinds land in the consumers' default case. */
-export type HostFrame =
-  | { type: 'host/session-added'; sessionId: string; blank: boolean; cwd?: string }
-  | { type: 'host/session-removed'; sessionId: string }
-  | { type: 'host/session-status'; sessionId: string; running: boolean }
-  | { type: 'host/agent-error'; sessionId: string; message: string }
-  | { type: 'host/workspace-changed'; workspace: WorkspaceView }
-  | { type: 'host/workspace-removed'; workspaceId: string }
-  | { type: 'host/workspace-order-changed'; workspaceIds: string[] }
-  | { type: 'host/archived-sessions-changed'; archivedSessionIds: string[] }
 
 /** Unwrap a full-form ServerResponse: value on ok, throw on business error. */
 function unwrap(serverResponse: unknown): unknown {
@@ -203,9 +135,9 @@ export const dsh = {
     return value.items
   },
 
-  /** Tail page of a session's event log (transcript rebuild source). */
-  async sessionHistory(sessionId: string): Promise<SessionHistory> {
-    return (await dsh.call('session.history', { sessionId })) as SessionHistory
+  /** Tail page of a session's transcript, as semantic items. */
+  async sessionHistory(sessionId: string): Promise<CodedHistoryPage> {
+    return (await window.dshDesktop.dsh.invoke('coded.session.history', { sessionId })) as CodedHistoryPage
   },
 
   async renameSession(sessionId: string, title: string): Promise<void> {
@@ -307,80 +239,23 @@ export const dsh = {
   },
 
   /**
-   * Subscribe to the mux downstream stream. `onEvent` receives session/event
-   * frames; answerable frames (approvals, questions) route to their own
-   * handlers with the envelope's rpcId — the stable id a `respond` call
-   * echoes. `opts.types` is the adapter-side filter (BridgeStreamOpenPayload)
-   * — list exactly the frame kinds the handlers consume, so bulky frames
-   * (projections) never cross the pipe or IPC.
+   * Subscribe to the semantic events stream (§2.3): mux + host merged and
+   * synthesized adapter-side — the envelope IS the Coded event. `opts.types`
+   * filters on semantic event names; approval/question events carry their
+   * stable `gateId` for `respond`.
    */
-  async openMux(
+  async openEvents(
     handlers: {
-      onEvent: (frame: SessionEventFrame) => void
-      onApproval?: (frame: ApprovalRequestedFrame | ApprovalResolvedFrame, rpcId: string) => void
-      onQuestion?: (frame: QuestionRequestedFrame | QuestionResolvedFrame, rpcId: string) => void
-      onQueue?: (frame: SessionQueueFrame) => void
+      onEvent: (event: CodedSemanticEvent) => void
       onOpen?: () => void
       onEnd?: (reason?: string) => void
     },
     opts?: { types?: string[] },
   ): Promise<number> {
-    return window.dshDesktop.dsh.openStream('mux', { types: opts?.types }, {
+    return window.dshDesktop.dsh.openStream('events', { types: opts?.types }, {
       onFrame: (envelope) => {
-        // Frames arrive wrapped as full-form ServerRequests; the mux frame
-        // (the document typed by `method`) sits in the payload slot.
-        const e = envelope as { type?: string; rpcId?: string; payload?: unknown }
-        if (e?.type !== 'server-request') return
-        const frame = e.payload as { type?: string } | undefined
-        const rpcId = typeof e.rpcId === 'string' ? e.rpcId : ''
-        switch (frame?.type) {
-          case 'session/event':
-            handlers.onEvent(frame as unknown as SessionEventFrame)
-            return
-          case 'approval/requested':
-          case 'approval/resolved':
-            handlers.onApproval?.(frame as unknown as ApprovalRequestedFrame, rpcId)
-            return
-          case 'question/requested':
-          case 'question/resolved':
-            handlers.onQuestion?.(frame as unknown as QuestionRequestedFrame, rpcId)
-            return
-          case 'session/queue':
-            handlers.onQueue?.(frame as unknown as SessionQueueFrame)
-            return
-          default:
-            // Other mux frame kinds (projections, jobs) get dedicated
-            // helpers when a surface needs them.
-            return
-        }
-      },
-      onOpen: () => {
-        handlers.onOpen?.()
-      },
-      onEnd: (reason) => {
-        handlers.onEnd?.(reason)
-      },
-    })
-  },
-
-  /**
-   * Subscribe to the host downstream stream (workspace/session roster
-   * changes). Same ServerRequest wrapping as the mux stream.
-   */
-  async openHost(
-    handlers: {
-      onFrame: (frame: HostFrame) => void
-      onOpen?: () => void
-      onEnd?: (reason?: string) => void
-    },
-    opts?: { types?: string[] },
-  ): Promise<number> {
-    return window.dshDesktop.dsh.openStream('host', { types: opts?.types }, {
-      onFrame: (envelope) => {
-        const e = envelope as { type?: string; payload?: unknown }
-        if (e?.type !== 'server-request') return
-        const frame = e.payload as HostFrame | undefined
-        if (frame !== undefined && typeof frame.type === 'string') handlers.onFrame(frame)
+        const e = envelope as { type?: string } | undefined
+        if (e !== undefined && typeof e.type === 'string') handlers.onEvent(e as CodedSemanticEvent)
       },
       onOpen: () => {
         handlers.onOpen?.()

@@ -75,8 +75,8 @@ export const bridgeRpcErrSchema = z.object({
 })
 export type BridgeRpcErr = z.infer<typeof bridgeRpcErrSchema>
 
-/** The two downstream event streams the harness face exposes. */
-export const bridgeStreamNameSchema = z.enum(['mux', 'host'])
+/** The downstream event streams the harness face exposes. */
+export const bridgeStreamNameSchema = z.enum(['mux', 'host', 'events'])
 export type BridgeStreamName = z.infer<typeof bridgeStreamNameSchema>
 
 /**

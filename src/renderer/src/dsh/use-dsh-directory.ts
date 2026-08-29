@@ -1,18 +1,17 @@
 /**
- * useDshDirectory — the sidebar's real roster over the CodedBridge:
- * workspace + session baselines from unary calls, kept live by the host
- * stream (session-added/removed/status, workspace-changed/removed/order,
- * archived set, agent errors).
+ * useDshDirectory — the sidebar's real roster over the CodedBridge: workspace
+ * + session baselines from unary calls, kept live by the semantic events
+ * stream (§2.3): session added/removed/phase/title, agent errors, workspace
+ * changes, and the archived set.
  *
  * Composition rules follow the harness web surface: blank sessions (no turn
- * yet) and archived sessions are hidden from lists; titles ride the
- * session.list projection baseline (live title updates arrive on the mux
- * stream, which this hook deliberately does not subscribe — titles refresh
- * on the next baseline pull).
+ * yet) and archived sessions are hidden from lists; the semantic
+ * `session.title` event keeps titles live without a baseline re-pull.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { dsh } from './client'
-import type { DshStatus, HostFrame, SessionSummary, WorkspaceView } from './client'
+import type { CodedSemanticEvent, CodedTranscriptItem, DshStatus } from './client'
+import type { SessionSummary } from './client'
 
 export interface DirectorySession {
   id: string
@@ -36,18 +35,21 @@ export interface DshDirectory {
   workspaces: DirectoryWorkspace[]
   /** Re-pull both baselines (after mutations the host does not echo). */
   refresh: () => void
+  /** Keep a shell-created session visible in the sidebar even while blank
+   *  (the web hides blank sessions; Coded's + must show what it created). */
+  pinSession: (sessionId: string) => void
 }
 
-/** The host frame kinds this hook consumes (adapter-side filter list). */
-const HOST_TYPES = [
-  'host/session-added',
-  'host/session-removed',
-  'host/session-status',
-  'host/agent-error',
-  'host/workspace-changed',
-  'host/workspace-removed',
-  'host/workspace-order-changed',
-  'host/archived-sessions-changed',
+/** Semantic event kinds this hook consumes (adapter-side filter list). */
+const EVENT_TYPES = [
+  'session.added',
+  'session.removed',
+  'session.phase',
+  'session.title',
+  'backend.error',
+  'session.workspaceChanged',
+  'session.workspaceRemoved',
+  'session.archivedChanged',
 ]
 
 /** Sidebar title: the 'title' projection, else the blank-session label. */
@@ -68,11 +70,14 @@ function toDirectorySession(summary: SessionSummary): DirectorySession {
 }
 
 /** Compose the sidebar rows: workspaces in roster order, their sessions in
- *  owned order, blank and archived sessions hidden. */
+ *  owned order, blank and archived sessions hidden — except blank sessions
+ *  the shell itself created (pinned), which stay visible until their first
+ *  turn clears the blank bit naturally. */
 function compose(
-  workspaces: WorkspaceView[],
+  workspaces: { workspaceId: string; title: string; path: string; sessionIds: string[] }[],
   sessions: Map<string, DirectorySession>,
   archived: Set<string>,
+  pinned: Set<string>,
 ): DirectoryWorkspace[] {
   return workspaces.map((workspace) => ({
     id: workspace.workspaceId,
@@ -80,22 +85,36 @@ function compose(
     path: workspace.path,
     sessions: workspace.sessionIds
       .map((id) => sessions.get(id))
-      .filter((s): s is DirectorySession => s !== undefined && !s.blank && !archived.has(s.id)),
+      .filter(
+        (s): s is DirectorySession =>
+          s !== undefined && (!s.blank || pinned.has(s.id)) && !archived.has(s.id),
+      ),
   }))
 }
 
 export function useDshDirectory(): DshDirectory {
   const [status, setStatus] = useState<DshStatus>('starting')
   const [workspaces, setWorkspaces] = useState<DirectoryWorkspace[]>([])
-  const workspacesRef = useRef<WorkspaceView[]>([])
+  const workspacesRef = useRef<{ workspaceId: string; title: string; path: string; sessionIds: string[] }[]>([])
   const sessionsRef = useRef(new Map<string, DirectorySession>())
   const archivedRef = useRef(new Set<string>())
+  /** Shell-created sessions kept visible while blank. */
+  const pinnedRef = useRef(new Set<string>())
   const subscribedRef = useRef(false)
 
   /** Recompose + publish from the refs. */
   const publish = useCallback((): void => {
-    setWorkspaces(compose(workspacesRef.current, sessionsRef.current, archivedRef.current))
+    setWorkspaces(compose(workspacesRef.current, sessionsRef.current, archivedRef.current, pinnedRef.current))
   }, [])
+
+  /** Keep one session visible even while blank (shell-created). */
+  const pinSession = useCallback(
+    (sessionId: string): void => {
+      pinnedRef.current.add(sessionId)
+      publish()
+    },
+    [publish],
+  )
 
   /** Baseline pull: workspace roster + session list + archived set. */
   const refresh = useCallback((): void => {
@@ -111,109 +130,104 @@ export function useDshDirectory(): DshDirectory {
       })
   }, [publish])
 
-  /** Apply one host-stream frame to the refs, then publish. */
-  const applyHostFrame = useCallback(
-    (frame: HostFrame): void => {
-      switch (frame.type) {
-        case 'host/session-added': {
-          // Re-announcements happen when the backend attaches a known session
-          // (e.g. a models read publishes its agent) — never clobber known
-          // metadata; only genuinely new sessions get a placeholder row, and
-          // the real title arrives via the refresh below.
-          if (sessionsRef.current.has(frame.sessionId)) return
-          sessionsRef.current.set(frame.sessionId, {
-            id: frame.sessionId,
+  /** Apply one semantic event to the refs, then publish. */
+  const applyEvent = useCallback(
+    (event: CodedSemanticEvent): void => {
+      switch (event.type) {
+        case 'session.added': {
+          if (sessionsRef.current.has(event.sessionId)) return
+          sessionsRef.current.set(event.sessionId, {
+            id: event.sessionId,
             title: '新会话',
             updatedAt: Date.now(),
             running: false,
             errored: false,
-            blank: frame.blank,
+            blank: event.blank === true,
           })
           publish()
-          refresh()
           return
         }
-        case 'host/session-removed': {
-          sessionsRef.current.delete(frame.sessionId)
+        case 'session.removed': {
+          sessionsRef.current.delete(event.sessionId)
           publish()
           return
         }
-        case 'host/session-status': {
-          const session = sessionsRef.current.get(frame.sessionId)
+        case 'session.phase': {
+          const session = sessionsRef.current.get(event.sessionId)
           if (session !== undefined) {
-            sessionsRef.current.set(frame.sessionId, {
+            sessionsRef.current.set(event.sessionId, {
               ...session,
-              running: frame.running,
+              running: event.phase === 'running',
               // A live turn proves the session is no longer blank; starting
               // a new turn clears the previous error marker.
-              blank: frame.running ? false : session.blank,
-              errored: frame.running ? false : session.errored,
+              blank: event.phase === 'running' ? false : session.blank,
+              errored: event.phase === 'running' ? false : session.errored,
             })
             publish()
           }
           return
         }
-        case 'host/agent-error': {
-          const session = sessionsRef.current.get(frame.sessionId)
-          if (session !== undefined) {
-            sessionsRef.current.set(frame.sessionId, { ...session, running: false, errored: true })
+        case 'session.title': {
+          const session = sessionsRef.current.get(event.sessionId)
+          if (session !== undefined && event.title !== '') {
+            sessionsRef.current.set(event.sessionId, { ...session, title: event.title })
             publish()
           }
           return
         }
-        case 'host/workspace-changed': {
+        case 'backend.error': {
+          if (event.sessionId === undefined) return
+          const session = sessionsRef.current.get(event.sessionId)
+          if (session !== undefined) {
+            sessionsRef.current.set(event.sessionId, { ...session, running: false, errored: true })
+            publish()
+          }
+          return
+        }
+        case 'session.workspaceChanged': {
           const index = workspacesRef.current.findIndex(
-            (w) => w.workspaceId === frame.workspace.workspaceId,
+            (w) => w.workspaceId === event.workspace.workspaceId,
           )
-          if (index >= 0) workspacesRef.current[index] = frame.workspace
-          else workspacesRef.current.push(frame.workspace)
+          if (index >= 0) workspacesRef.current[index] = event.workspace
+          else workspacesRef.current.push(event.workspace)
           publish()
           return
         }
-        case 'host/workspace-removed': {
-          workspacesRef.current = workspacesRef.current.filter(
-            (w) => w.workspaceId !== frame.workspaceId,
-          )
-          publish()
-          return
-        }
-        case 'host/workspace-order-changed': {
-          const order = new Map(frame.workspaceIds.map((id, i) => [id, i]))
+        case 'session.workspaceOrderChanged': {
+          const order = new Map(event.workspaceIds.map((id, i) => [id, i]))
           workspacesRef.current = [...workspacesRef.current].sort(
             (a, b) => (order.get(a.workspaceId) ?? 0) - (order.get(b.workspaceId) ?? 0),
           )
           publish()
           return
         }
-        case 'host/archived-sessions-changed': {
-          archivedRef.current = new Set(frame.archivedSessionIds)
-          publish()
+        case 'session.archivedChanged': {
+          refresh()
           return
         }
         default:
           return
       }
     },
-    [publish],
+    [publish, refresh],
   )
 
   useEffect(() => {
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let lastStatus: DshStatus = 'starting'
-    /** Baseline + host stream, once per bridge-connected epoch. */
+    /** Baseline + events stream, once per bridge-connected epoch. */
     const connect = (): void => {
       refresh()
       if (subscribedRef.current) return
       subscribedRef.current = true
       void dsh
-        .openHost(
+        .openEvents(
           {
-            onFrame: (frame) => {
-              if (!cancelled) applyHostFrame(frame)
+            onEvent: (event) => {
+              if (!cancelled) applyEvent(event)
             },
             onEnd: (reason) => {
-              console.log(`[dsh-directory] host stream ended: ${reason ?? 'closed'}`)
               subscribedRef.current = false
               if (!cancelled && lastStatus === 'bridge-connected') {
                 retryTimer = setTimeout(() => {
@@ -225,10 +239,10 @@ export function useDshDirectory(): DshDirectory {
               }
             },
           },
-          { types: HOST_TYPES },
+          { types: EVENT_TYPES },
         )
         .catch((error: unknown) => {
-          console.log(`[dsh-directory] host stream open failed: ${String(error)}`)
+          console.log(`[dsh-directory] events open failed: ${String(error)}`)
           subscribedRef.current = false
         })
     }
@@ -251,5 +265,8 @@ export function useDshDirectory(): DshDirectory {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return { status, workspaces, refresh }
+  return { status, workspaces, refresh, pinSession }
 }
+
+/** Keep the transcript item type re-exported for directory consumers. */
+export type { CodedTranscriptItem }

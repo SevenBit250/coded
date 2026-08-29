@@ -1,9 +1,9 @@
 /**
- * ChatStream — the transcript view: user bubbles right, assistant text left,
- * tool-call blocks inline, streaming tail marked. Auto-scrolls to the newest
- * message. `children` render at the transcript tail (the answerable gates
- * live there); `trailTick` tells the scroller the tail changed without
- * diffing children.
+ * ChatStream — the transcript view over semantic transcript items (§2.3):
+ * user content right, assistant markdown left, reasoning + tool-call blocks
+ * inline, streaming tails marked. Auto-scrolls to the newest entry.
+ * `children` render at the tail (the answerable gates live there);
+ * `trailTick` tells the scroller the tail changed without diffing children.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
@@ -20,14 +20,13 @@ export interface ChatStreamProps {
 /** One collapsible tool-call card (running → done). */
 function ToolBlock({ message }: { message: ChatMessage }): ReactElement {
   const [open, setOpen] = useState(false)
-  const title = message.toolTitle ?? message.toolName ?? '工具调用'
-  const meta =
-    message.toolStatus === 'running' ? '运行中' : (message.resultMeta ?? '完成')
-  const expandable =
-    (message.argsText !== undefined || message.resultText !== undefined)
+  if (message.kind !== 'tool') return <></>
+  const title = message.title ?? '工具调用'
+  const meta = message.status === 'running' ? '运行中' : (message.resultMeta ?? '完成')
+  const expandable = message.argsText !== undefined || message.resultText !== undefined
   return (
-    <div className={`chat-row chat-row--assistant`}>
-      <div className={`tool-card${message.toolStatus === 'running' ? ' tool-card--running' : ''}`}>
+    <div className="chat-row chat-row--assistant">
+      <div className={`tool-card${message.status === 'running' ? ' tool-card--running' : ''}`}>
         <button
           type="button"
           className="tool-head"
@@ -36,9 +35,9 @@ function ToolBlock({ message }: { message: ChatMessage }): ReactElement {
             if (expandable) setOpen(!open)
           }}
         >
-          <span className={`tool-status tool-status--${message.toolStatus ?? 'done'}`} />
+          <span className={`tool-status tool-status--${message.status}`} />
           <span className="tool-title">{title}</span>
-          <span className={`tool-meta${message.toolStatus === 'running' ? ' tool-meta--running' : ''}`}>
+          <span className={`tool-meta${message.status === 'running' ? ' tool-meta--running' : ''}`}>
             {meta}
           </span>
           {expandable && (
@@ -61,8 +60,11 @@ function ToolBlock({ message }: { message: ChatMessage }): ReactElement {
 /** One collapsible reasoning ("thinking") card: open while streaming,
  *  collapsed once the block ends; click toggles a finished block. */
 function ReasoningBlock({ message }: { message: ChatMessage }): ReactElement {
-  const streaming = message.streaming === true
+  // Hooks run unconditionally: the item kind never changes for a stable id,
+  // but the early return must not sit above hook calls.
   const [toggled, setToggled] = useState<boolean | null>(null)
+  if (message.kind !== 'reasoning') return <></>
+  const streaming = message.streaming === true
   const open = toggled ?? streaming
   return (
     <div className="chat-row chat-row--assistant">
@@ -106,9 +108,11 @@ export function ChatStream({ messages, trailTick = 0, children }: ChatStreamProp
           <ToolBlock key={message.id} message={message} />
         ) : message.kind === 'reasoning' ? (
           <ReasoningBlock key={message.id} message={message} />
-        ) : message.role === 'user' ? (
+        ) : message.kind === 'user' ? (
           <div key={message.id} className="chat-row chat-row--user">
-            <div className="chat-bubble chat-bubble--user">{message.text}</div>
+            <div className="chat-bubble chat-bubble--user">
+              {message.content.map((part, i) => (part.type === 'text' ? <span key={i}>{part.text}</span> : null))}
+            </div>
           </div>
         ) : (
           <div key={message.id} className="chat-row chat-row--assistant">

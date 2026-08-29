@@ -1,73 +1,47 @@
 /**
  * useDshSession — the renderer's session state machine over the CodedBridge:
  * lifecycle status, the ACTIVE session (switched from the sidebar), and the
- * chat transcript.
+ * transcript.
  *
- * Event mapping (mux stream): `assistant/chunk` text deltas append to the
- * streaming assistant message; `assistant/message` finalizes it (the
- * assembled text wins over the delta accumulation, in case a chunk was
- * dropped); user messages render locally on send and are not re-rendered
- * from the echo. Answerable frames (approvals/questions) live in pending
- * lists keyed by their stable rpcId, replayed by the host on resubscribe.
+ * M2: everything below consumes ONLY the semantic domain (§2.3) — the
+ * `events` stream (transcript/answerable/queue events) and `coded.*` unary
+ * methods. No backend dialect knowledge lives here.
  *
- * Switching: `sessionId` arrives as a prop (sidebar selection); null means
- * "fresh draft" — the first send creates the session and reports it through
- * `onSessionCreated` so the sidebar can select it.
+ * Rendering model: the backend echo is the source of truth. A send() pushes
+ * no optimistic bubbles — the user item arrives as `transcript.appended`,
+ * streamed blocks as reasoning/assistant items with `transcript.delta`, and
+ * every item settles via `transcript.finalized` (the authoritative value).
+ * Item ids are stable across history and the live stream, so history rebuilds
+ * and live appends dedupe naturally.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactElement } from 'react'
 import { dsh } from './client'
 import type {
-  ApprovalRequestedFrame,
-  ApprovalResolvedFrame,
+  CodedContentPart,
+  CodedSemanticEvent,
+  CodedTranscriptItem,
   DshStatus,
   QuestionItem,
-  QuestionRequestedFrame,
-  QuestionResolvedFrame,
-  SessionEventFrame,
-  SessionQueueFrame,
-  TextChunk,
 } from './client'
 
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  /** True while the assistant message is still receiving deltas. */
-  streaming?: boolean
-  /** Set when the send failed before/while dispatching. */
-  error?: string
-  /** 'tool' marks a tool-call block (a transcript card, not a chat bubble). */
-  kind?: 'text' | 'tool' | 'reasoning'
-  /** Tool block fields (kind === 'tool'). */
-  callId?: string
-  toolName?: string
-  /** Presentation title from the host view (falls back to toolName). */
-  toolTitle?: string
-  toolCard?: string
-  toolStatus?: 'running' | 'done'
-  /** Pretty-printed call arguments (expanded view). */
-  argsText?: string
-  /** Result body (expanded view): terminal output or result text. */
-  resultText?: string
-  /** Short result meta line, e.g. "exit 0" or the replacement title. */
-  resultMeta?: string
-}
+/** One transcript entry plus the shell-local send-error decoration. */
+export type ChatMessage = CodedTranscriptItem & { error?: string }
 
-/** A pending tool-call approval (answerable via its stable envelope rpcId). */
+/** A pending tool-call approval (answerable via its stable gateId). */
 export interface PendingApproval {
-  rpcId: string
+  gateId: string
   sessionId: string
   approvalId: string
   toolName: string
   reason?: string
-  /** Best-effort summary of the correlated tool/call arguments. */
+  /** Best-effort summary of the correlated tool call arguments. */
   argsSummary?: string
 }
 
-/** A pending user-question batch (answerable via its stable envelope rpcId). */
+/** A pending user-question batch (answerable via its stable gateId). */
 export interface PendingQuestion {
-  rpcId: string
+  gateId: string
   sessionId: string
   questions: QuestionItem[]
 }
@@ -79,67 +53,26 @@ export interface QuestionAnswerItem {
   custom?: string
 }
 
+/** One queued message (admission pending), rendered in the composer strip. */
+export interface QueuedMessage {
+  itemId: string
+  placement: 'queued' | 'steering'
+  text: string
+}
+
 let idCounter = 0
 function nextId(): string {
   idCounter += 1
   return `m${idCounter}`
 }
 
-/** Extract the plain text out of an assembled message's content blocks
- *  (defensive — the content block shape belongs to dsh-llm). */
-function contentText(content: unknown): string {
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((block) => {
-      const b = block as { type?: string; text?: string }
-      return b?.type === 'text' && typeof b.text === 'string' ? b.text : ''
-    })
-    .join('')
-}
-
-/**
- * Read the text of a message SessionEvent's data slot. The event carries the
- * message in the `message` slot (live mux and history API agree); the
- * bare-`content` fallback covers the raw journal shape.
- */
-function messageEventText(data: unknown): string {
-  const d = data as { message?: { content?: unknown }; content?: unknown } | undefined
-  return contentText(d?.message?.content ?? d?.content)
-}
-
-/** True for a genuine human-authored user/message — injected context
- *  (agent-instructions, system-prompt plugin snapshots) also rides
- *  user/message but with a non-user source kind. */
-function isHumanUserMessage(data: unknown): boolean {
-  const source = (data as { source?: { kind?: unknown } } | undefined)?.source
-  return source?.kind === 'user'
-}
-
-/** Pretty-printed call arguments for the tool block's expanded view. */
-function prettyArgs(raw: unknown): string | undefined {
-  if (typeof raw !== 'string' || raw === '') return undefined
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
-}
-
-/** One queued message (admission pending), rendered in the composer strip. */
-export interface QueuedMessage {
-  id: string
-  placement: 'queued' | 'steering' | 'context'
-  text: string
-}
-
 export interface DshSession {
   status: DshStatus
+  /** Transcript items of the active session (semantic shapes). */
   messages: ChatMessage[]
   /** True while a send is in flight (composer locks). */
   busy: boolean
   send: (text: string) => void
-  /** Bumped on each turn/end of the active session (directory refresh cue). */
-  turnTick: number
   /** Queued (not yet admitted) messages of the active session. */
   queue: QueuedMessage[]
   /** Abort the active session's running turn. */
@@ -154,14 +87,17 @@ export interface DshSession {
   cancelQuestion: (pending: PendingQuestion) => void
 }
 
-/** The mux frame kinds this hook consumes (adapter-side filter list). */
-const MUX_TYPES = [
-  'session/event',
-  'session/queue',
-  'approval/requested',
-  'approval/resolved',
-  'question/requested',
-  'question/resolved',
+/** Semantic event kinds this hook consumes (adapter-side filter list). */
+const EVENT_TYPES = [
+  'transcript.appended',
+  'transcript.delta',
+  'transcript.finalized',
+  'toolCall.updated',
+  'approval.requested',
+  'approval.resolved',
+  'question.requested',
+  'question.resolved',
+  'queue.changed',
 ]
 
 /** Compact one-line summary of a tool call's arguments (card display). */
@@ -191,12 +127,9 @@ export function useDshSession(
   const [status, setStatus] = useState<DshStatus>('starting')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
+  const [queue, setQueue] = useState<QueuedMessage[]>([])
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([])
   const [pendingQuestions, setPendingQuestions] = useState<PendingQuestion[]>([])
-  /** Bumped on every turn/end of the active session (directory refresh cue). */
-  const [turnTick, setTurnTick] = useState(0)
-  /** Queued (not yet admitted) messages of the active session. */
-  const [queue, setQueue] = useState<QueuedMessage[]>([])
   const sessionIdRef = useRef<string | null>(null)
   /** Sessions this client created itself — their transcript is already
    *  local, so the switch effect must not rebuild it from history. */
@@ -205,8 +138,6 @@ export function useDshSession(
   const subscribedRef = useRef(false)
   /** callId → args summary, for the approval card's arguments line. */
   const toolCallsRef = useRef(new Map<string, string>())
-  /** Live reasoning blocks: `${turn}:${step}:${index}` → transcript id. */
-  const reasoningBlocksRef = useRef(new Map<string, string>())
   const onSessionCreatedRef = useRef(opts?.onSessionCreated)
   onSessionCreatedRef.current = opts?.onSessionCreated
   const workspaceIdRef = useRef(opts?.workspaceId)
@@ -216,48 +147,34 @@ export function useDshSession(
     let cancelled = false
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let lastStatus: DshStatus = 'starting'
-    /** Subscribe the mux stream once per bridge-connected epoch. */
+    /** Subscribe the semantic events stream once per bridge epoch. */
     const subscribe = (): void => {
       if (subscribedRef.current) return
       subscribedRef.current = true
-      console.log('[dsh-session] opening mux stream')
       void dsh
-        .openMux(
+        .openEvents(
           {
-            onEvent: (frame) => {
-              handleSessionEvent(frame)
-            },
-            onApproval: (frame, rpcId) => {
-              handleApproval(frame, rpcId)
-            },
-            onQuestion: (frame, rpcId) => {
-              handleQuestion(frame, rpcId)
-            },
-            onQueue: (frame) => {
-              handleQueue(frame)
+            onEvent: (event) => {
+              handleEvent(event)
             },
             onEnd: (reason) => {
-              console.log(`[dsh-session] mux ended: ${reason ?? 'closed'}`)
               subscribedRef.current = false
-              // Self-heal: a mux that dies while the bridge stays connected
+              // Self-heal: a stream that dies while the bridge stays connected
               // would otherwise leave the UI deaf until the next reconnect.
               if (!cancelled && lastStatus === 'bridge-connected') {
                 retryTimer = setTimeout(() => {
                   retryTimer = null
                   if (!cancelled && !subscribedRef.current && lastStatus === 'bridge-connected') {
-                    console.log('[dsh-session] resubscribing mux after unexpected end')
                     subscribe()
                   }
                 }, 1000)
               }
             },
           },
-          // Only chat + answerable traffic crosses the pipe — bulky
-          // projections stay host-side (adapter-side filter).
-          { types: MUX_TYPES },
+          { types: EVENT_TYPES },
         )
         .catch((error) => {
-          console.log(`[dsh-session] mux open failed: ${String(error)}`)
+          console.log(`[dsh-session] events open failed: ${String(error)}`)
           subscribedRef.current = false
         })
     }
@@ -282,14 +199,14 @@ export function useDshSession(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Session switch: rebuild the transcript from the durable event log.
-  // Sessions this client created skip the reload — their transcript is live.
+  // Session switch: rebuild the transcript from the semantic history (items
+  // carry the same ids as the live stream). Self-created sessions skip the
+  // reload — their transcript is live.
   useEffect(() => {
     if (sessionId === sessionIdRef.current) return
     sessionIdRef.current = sessionId
     setBusy(false)
     setQueue([])
-    reasoningBlocksRef.current.clear()
     if (sessionId === null) {
       setMessages([])
       return
@@ -297,87 +214,11 @@ export function useDshSession(
     if (selfCreatedRef.current.has(sessionId)) return
     let stale = false
     setMessages([])
-    console.log(`[dsh-session] history load start: ${sessionId}`)
     void dsh
       .sessionHistory(sessionId)
-      .then((history) => {
+      .then((page) => {
         if (stale) return
-        const rebuilt: ChatMessage[] = []
-        for (const entry of history.events) {
-          const data = entry.event.data
-          if (entry.event.type === 'user/message') {
-            // Injected context (AGENTS.md, system-prompt snapshots) also
-            // rides user/message — only genuine human input renders.
-            if (!isHumanUserMessage(data)) continue
-            const text = messageEventText(data)
-            if (text !== '') rebuilt.push({ id: nextId(), role: 'user', text })
-          } else if (entry.event.type === 'assistant/message') {
-            // Reasoning blocks ride the message content before the text —
-            // rebuild them as collapsed "thinking" cards.
-            const content = (data as { message?: { content?: unknown }; content?: unknown })
-              ?.message?.content
-            if (Array.isArray(content)) {
-              for (const block of content) {
-                const b = block as { type?: string; text?: string }
-                if (b?.type === 'reasoning' && typeof b.text === 'string' && b.text !== '') {
-                  rebuilt.push({
-                    id: nextId(),
-                    role: 'assistant',
-                    text: b.text,
-                    kind: 'reasoning',
-                  })
-                }
-              }
-            }
-            const text = messageEventText(data)
-            if (text !== '') rebuilt.push({ id: nextId(), role: 'assistant', text })
-          } else if (entry.event.type === 'tool/call') {
-            const call = data as { callId?: unknown; name?: unknown; arguments?: unknown } | undefined
-            if (typeof call?.callId !== 'string') continue
-            const callView = entry.view?.for === 'call' ? entry.view.view : undefined
-            rebuilt.push({
-              id: nextId(),
-              role: 'assistant',
-              text: '',
-              kind: 'tool',
-              callId: call.callId,
-              ...(typeof call.name === 'string' ? { toolName: call.name } : {}),
-              ...(typeof callView?.title === 'string' ? { toolTitle: callView.title } : {}),
-              ...(typeof callView?.card === 'string' ? { toolCard: callView.card } : {}),
-              toolStatus: 'running',
-              ...(prettyArgs(call.arguments) !== undefined
-                ? { argsText: prettyArgs(call.arguments) }
-                : {}),
-            })
-          } else if (entry.event.type === 'tool/result') {
-            const result = data as { callId?: unknown; content?: unknown } | undefined
-            if (typeof result?.callId !== 'string') continue
-            const resultView = entry.view?.for === 'result' ? entry.view.view : undefined
-            const output =
-              typeof resultView?.output === 'string'
-                ? resultView.output
-                : contentText(result.content)
-            for (let i = rebuilt.length - 1; i >= 0; i--) {
-              if (rebuilt[i].kind === 'tool' && rebuilt[i].callId === result.callId) {
-                rebuilt[i] = {
-                  ...rebuilt[i],
-                  ...(typeof resultView?.title === 'string' ? { toolTitle: resultView.title } : {}),
-                  ...(typeof resultView?.card === 'string' ? { toolCard: resultView.card } : {}),
-                  ...(output !== '' ? { resultText: output } : {}),
-                  ...(typeof resultView?.exitCode === 'number'
-                    ? { resultMeta: `exit ${String(resultView.exitCode)}` }
-                    : typeof resultView?.signal === 'string'
-                      ? { resultMeta: `signal ${resultView.signal}` }
-                      : {}),
-                  toolStatus: 'done',
-                }
-                break
-              }
-            }
-          }
-        }
-        console.log(`[dsh-session] history rebuilt: ${String(rebuilt.length)} messages from ${String(history.events.length)} events`)
-        setMessages(rebuilt)
+        setMessages(page.items.map((item) => ({ ...item })))
       })
       .catch((error: unknown) => {
         if (!stale) {
@@ -389,294 +230,161 @@ export function useDshSession(
     }
   }, [sessionId])
 
-  const appendAssistantDelta = useCallback((text: string): void => {
+  /** Upsert one transcript item by id (append ignores known ids so replayed
+   *  appends never reset accumulated deltas). */
+  const upsertItem = useCallback((item: CodedTranscriptItem): void => {
     setMessages((prev) => {
-      const last = prev[prev.length - 1]
-      // Merge target is a PLAIN text bubble only — a streaming reasoning card
-      // is also role=assistant/streaming, and some models emit text-deltas
-      // before the reasoning block-end; merging would pour the body into the
-      // thinking card.
-      if (
-        last !== undefined &&
-        last.role === 'assistant' &&
-        last.kind === undefined &&
-        last.streaming === true
-      ) {
-        return [...prev.slice(0, -1), { ...last, text: last.text + text }]
-      }
-      return [...prev, { id: nextId(), role: 'assistant', text, streaming: true }]
+      const at = prev.findIndex((m) => m.id === item.id)
+      if (at >= 0) return prev
+      return [...prev, { ...item }]
     })
   }, [])
 
-  const finalizeAssistant = useCallback((text: string): void => {
+  const appendText = useCallback((itemRef: string, text: string): void => {
     setMessages((prev) => {
-      const last = prev[prev.length - 1]
-      if (last !== undefined && last.role === 'assistant' && last.streaming === true) {
-        const settled = text !== '' ? text : last.text
-        return [...prev.slice(0, -1), { ...last, text: settled, streaming: false }]
-      }
-      if (text !== '') return [...prev, { id: nextId(), role: 'assistant', text }]
-      return prev
+      const at = prev.findIndex((m) => m.id === itemRef)
+      if (at < 0) return prev
+      const target = prev[at]
+      if (target.kind !== 'assistant' && target.kind !== 'reasoning') return prev
+      const updated = [...prev]
+      updated[at] = { ...target, text: target.text + text }
+      return updated
     })
   }, [])
 
-  /** Append a tool-call block; drops an empty non-streaming bubble that a
-   *  textless assistant/message left behind (placeholder cleanup). */
-  const appendToolBlock = useCallback((block: ChatMessage): void => {
+  const finalizeText = useCallback((itemRef: string, text: string): void => {
     setMessages((prev) => {
-      const last = prev[prev.length - 1]
-      const base =
-        last !== undefined && last.kind === undefined && last.role === 'assistant' &&
-        last.text === '' && last.streaming !== true && last.error === undefined
-          ? prev.slice(0, -1)
-          : prev
-      return [...base, block]
+      const at = prev.findIndex((m) => m.id === itemRef)
+      if (at < 0) {
+        // Never announced (missed deltas): surface the block whole.
+        const kind = itemRef.startsWith('r') ? 'reasoning' : 'assistant'
+        const item: ChatMessage =
+          kind === 'reasoning'
+            ? { id: itemRef, kind: 'reasoning', text }
+            : { id: itemRef, kind: 'assistant', text }
+        return text === '' ? prev : [...prev, item]
+      }
+      const target = prev[at]
+      if (target.kind !== 'assistant' && target.kind !== 'reasoning') return prev
+      const updated = [...prev]
+      updated[at] = {
+        ...target,
+        text: text !== '' ? text : target.text,
+        streaming: false,
+      }
+      return updated
     })
   }, [])
 
-  /** Pair a tool/result with its running block by callId. */
-  const completeToolBlock = useCallback(
-    (callId: string, patch: Partial<ChatMessage>): void => {
-      setMessages((prev) => {
-        for (let i = prev.length - 1; i >= 0; i--) {
-          if (prev[i].kind === 'tool' && prev[i].callId === callId) {
-            const updated = [...prev]
-            updated[i] = { ...prev[i], ...patch, toolStatus: 'done' }
-            return updated
-          }
-        }
-        return prev
-      })
-    },
-    [],
-  )
-
-  /** Patch one transcript block by id (reasoning deltas / calibration). */
-  const patchBlock = useCallback(
-    (id: string, patch: (m: ChatMessage) => ChatMessage): void => {
-      setMessages((prev) => {
-        const i = prev.findIndex((m) => m.id === id)
-        if (i < 0) return prev
-        const updated = [...prev]
-        updated[i] = patch(prev[i])
-        return updated
-      })
-    },
-    [],
-  )
-
-  /** A live reasoning block: create on first delta (replacing a trailing
-   *  empty streaming placeholder — the thinking indicator transforms),
-   *  then accumulate. */
-  const appendReasoningDelta = useCallback((key: string, text: string): void => {
-    const existing = reasoningBlocksRef.current.get(key)
-    if (existing !== undefined) {
-      patchBlock(existing, (m) => ({ ...m, text: m.text + text }))
-      return
-    }
-    const id = nextId()
-    reasoningBlocksRef.current.set(key, id)
-    setMessages((prev) => {
-      const last = prev[prev.length - 1]
-      const base =
-        last !== undefined && last.kind === undefined && last.role === 'assistant' &&
-        last.text === '' && last.streaming === true && last.error === undefined
-          ? prev.slice(0, -1)
-          : prev
-      return [...base, { id, role: 'assistant', text, kind: 'reasoning', streaming: true }]
-    })
-  }, [patchBlock])
-
-  /** block-end: the assembled reasoning text calibrates the accumulation. */
-  const finalizeReasoning = useCallback((key: string, text: string): void => {
-    const id = reasoningBlocksRef.current.get(key)
-    if (id === undefined) {
-      // No live deltas seen (e.g. resumed mid-block): surface the block whole.
-      if (text !== '') {
-        const newId = nextId()
-        reasoningBlocksRef.current.set(key, newId)
-        setMessages((prev) => [
-          ...prev,
-          { id: newId, role: 'assistant', text, kind: 'reasoning' },
-        ])
-      }
-      return
-    }
-    patchBlock(id, (m) => ({ ...m, text: text !== '' ? text : m.text, streaming: false }))
-  }, [patchBlock])
-
-  const handleSessionEvent = useCallback(
-    (frame: SessionEventFrame): void => {
-      // Only the active session's events render.
-      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
-      const event = frame.event
-      // SessionEvent payloads sit in the `data` slot:
-      // {type:'assistant/chunk', data:{turn, step, chunk}} and
-      // {type:'assistant/message', data:{turn, step, content}}.
-      const data = event.data as
-        | { turn?: number; step?: number; chunk?: TextChunk; content?: unknown }
-        | undefined
+  const handleEvent = useCallback(
+    (event: CodedSemanticEvent): void => {
       switch (event.type) {
-        case 'assistant/chunk': {
-          const chunk = data?.chunk as
-            | {
-                type?: string
-                index?: number
-                text?: string
-                blockType?: string
-                block?: { type?: string; text?: string }
-              }
-            | undefined
-          if (chunk?.type === 'text-delta' && typeof chunk.text === 'string') {
-            appendAssistantDelta(chunk.text)
-          } else if (chunk?.type === 'reasoning-delta' && typeof chunk.text === 'string') {
-            const key = `${String(data?.turn ?? 0)}:${String(data?.step ?? 0)}:${String(chunk.index ?? 0)}`
-            appendReasoningDelta(key, chunk.text)
-          } else if (
-            chunk?.type === 'block-end' &&
-            chunk.block?.type === 'reasoning' &&
-            typeof chunk.block.text === 'string'
-          ) {
-            const key = `${String(data?.turn ?? 0)}:${String(data?.step ?? 0)}:${String(chunk.index ?? 0)}`
-            finalizeReasoning(key, chunk.block.text)
-          }
+        case 'transcript.appended': {
+          if (sessionIdRef.current !== null && event.sessionId !== sessionIdRef.current) return
+          upsertItem(event.item)
           return
         }
-        case 'assistant/message': {
-          finalizeAssistant(messageEventText(data))
+        case 'transcript.delta': {
+          if (event.sessionId !== sessionIdRef.current) return
+          appendText(event.itemRef, event.text)
           return
         }
-        case 'tool/call': {
-          const call = event.data as
-            | { callId?: unknown; name?: unknown; arguments?: unknown }
-            | undefined
-          if (typeof call?.callId !== 'string') return
-          // Remember the arguments so an approval card can show what it is
-          // approving (approval/requested itself carries no arguments).
-          const summary = summarizeArgs(call.arguments)
-          if (summary !== undefined) toolCallsRef.current.set(call.callId, summary)
-          // Transcript block. Host presentation view wins for the title.
-          const callView = frame.view?.for === 'call' ? frame.view.view : undefined
-          appendToolBlock({
-            id: nextId(),
-            role: 'assistant',
-            text: '',
-            kind: 'tool',
-            callId: call.callId,
-            ...(typeof call.name === 'string' ? { toolName: call.name } : {}),
-            ...(typeof callView?.title === 'string' ? { toolTitle: callView.title } : {}),
-            ...(typeof callView?.card === 'string' ? { toolCard: callView.card } : {}),
-            toolStatus: 'running',
-            ...(prettyArgs(call.arguments) !== undefined
-              ? { argsText: prettyArgs(call.arguments) }
-              : {}),
-          })
+        case 'transcript.finalized': {
+          if (event.sessionId !== sessionIdRef.current) return
+          finalizeText(event.itemRef, event.text)
           return
         }
-        case 'tool/result': {
-          const result = event.data as { callId?: unknown; content?: unknown } | undefined
-          if (typeof result?.callId !== 'string') return
-          const resultView = frame.view?.for === 'result' ? frame.view.view : undefined
-          const output =
-            typeof resultView?.output === 'string'
-              ? resultView.output
-              : contentText(result.content)
-          completeToolBlock(result.callId, {
-            ...(typeof resultView?.title === 'string' ? { toolTitle: resultView.title } : {}),
-            ...(typeof resultView?.card === 'string' ? { toolCard: resultView.card } : {}),
-            ...(output !== '' ? { resultText: output } : {}),
-            ...(typeof resultView?.exitCode === 'number'
-              ? { resultMeta: `exit ${String(resultView.exitCode)}` }
-              : typeof resultView?.signal === 'string'
-                ? { resultMeta: `signal ${resultView.signal}` }
+        case 'toolCall.updated': {
+          if (event.sessionId !== sessionIdRef.current) return
+          setMessages((prev) => {
+            const at = prev.findIndex((m) => m.kind === 'tool' && m.callId === event.callId)
+            if (at < 0) return prev
+            const target = prev[at]
+            if (target.kind !== 'tool') return prev
+            const updated = [...prev]
+            updated[at] = {
+              ...target,
+              ...(event.patch.title !== undefined ? { title: event.patch.title } : {}),
+              ...(event.patch.card !== undefined ? { card: event.patch.card } : {}),
+              ...(event.patch.resultText !== undefined
+                ? { resultText: event.patch.resultText }
                 : {}),
+              ...(event.patch.resultMeta !== undefined
+                ? { resultMeta: event.patch.resultMeta }
+                : {}),
+              status: event.patch.status ?? 'done',
+            }
+            return updated
           })
           return
         }
-        case 'turn/end': {
-          // Sidebar titles/recency ride the directory's baseline; bump a tick
-          // so it re-pulls once the turn's title/projection writes landed.
-          setTurnTick((n) => n + 1)
+        case 'approval.requested': {
+          setPendingApprovals((prev) => {
+            if (prev.some((p) => p.gateId === event.gateId)) return prev
+            return [
+              ...prev,
+              {
+                gateId: event.gateId,
+                sessionId: event.sessionId,
+                approvalId: event.approvalId,
+                toolName: event.toolName,
+                ...(event.reason !== undefined ? { reason: event.reason } : {}),
+                ...(event.callId !== undefined
+                  ? { argsSummary: toolCallsRef.current.get(event.callId) }
+                  : {}),
+              },
+            ]
+          })
+          return
+        }
+        case 'approval.resolved': {
+          setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== event.approvalId))
+          return
+        }
+        case 'question.requested': {
+          setPendingQuestions((prev) => {
+            if (prev.some((p) => p.gateId === event.gateId)) return prev
+            return [
+              ...prev,
+              {
+                gateId: event.gateId,
+                sessionId: event.sessionId,
+                questions: (event.questions ?? []) as QuestionItem[],
+              },
+            ]
+          })
+          return
+        }
+        case 'question.resolved': {
+          setPendingQuestions((prev) => prev.filter((p) => p.gateId !== event.gateId))
+          return
+        }
+        case 'queue.changed': {
+          if (event.sessionId !== sessionIdRef.current) return
+          setQueue(
+            event.items
+              .filter((item) => item.placement !== 'context')
+              .map((item) => ({
+                itemId: item.itemId,
+                placement: item.placement === 'steering' ? 'steering' : 'queued',
+                text: item.text,
+              })),
+          )
           return
         }
         default:
           return
       }
     },
-    [appendAssistantDelta, appendReasoningDelta, finalizeAssistant, finalizeReasoning],
+    [upsertItem, appendText, finalizeText],
   )
 
-  /** Answerable approval frames: requested adds, resolved removes. Pendings
-   *  are tracked for every session (the render side filters) so the replay
-   *  baseline at subscribe time — which precedes any selection — survives. */
-  const handleApproval = useCallback(
-    (frame: ApprovalRequestedFrame | ApprovalResolvedFrame, rpcId: string): void => {
-      if (frame.type === 'approval/requested') {
-        setPendingApprovals((prev) => {
-          if (prev.some((p) => p.approvalId === frame.approvalId)) return prev
-          return [
-            ...prev,
-            {
-              rpcId,
-              sessionId: frame.sessionId,
-              approvalId: frame.approvalId,
-              toolName: frame.toolName,
-              ...(frame.reason !== undefined ? { reason: frame.reason } : {}),
-              ...(frame.callId !== undefined
-                ? { argsSummary: toolCallsRef.current.get(frame.callId) }
-                : {}),
-            },
-          ]
-        })
-        return
-      }
-      // approval/resolved
-      setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== frame.approvalId))
-    },
-    [],
-  )
-
-  /** Answerable question frames: requested adds, resolved removes by rpcId. */
-  const handleQuestion = useCallback(
-    (frame: QuestionRequestedFrame | QuestionResolvedFrame, rpcId: string): void => {
-      if (frame.type === 'question/requested') {
-        setPendingQuestions((prev) => {
-          if (prev.some((p) => p.rpcId === rpcId)) return prev
-          return [...prev, { rpcId, sessionId: frame.sessionId, questions: frame.questions }]
-        })
-        return
-      }
-      // question/resolved keys by the request's rpcId.
-      setPendingQuestions((prev) => prev.filter((p) => p.rpcId !== frame.questionRpcId))
-    },
-    [],
-  )
-
-  /** session/queue frames are full snapshots of one session's queue. Context
-   *  items (synthetic model-context notes, e.g. a policy change) stay
-   *  invisible until claimed per the harness contract — never rendered. */
-  const handleQueue = useCallback(
-    (frame: SessionQueueFrame): void => {
-      if (sessionIdRef.current !== null && frame.sessionId !== sessionIdRef.current) return
-      setQueue(
-        frame.items
-          .filter((item) => item.placement !== 'context')
-          .map((item) => ({
-            id: item.id,
-            placement: item.placement,
-            text: contentText(item.message?.content),
-          })),
-      )
-    },
-    [],
-  )
-
-  /** Respond helpers: optimistic removal, the resolved frame confirms. */
+  /** Respond helpers: optimistic removal, the resolved event confirms. */
   const answerApproval = useCallback(
     (pending: PendingApproval, outcome: 'allowed-once' | 'rejected'): void => {
       setPendingApprovals((prev) => prev.filter((p) => p.approvalId !== pending.approvalId))
       void dsh
-        .respond(pending.rpcId, {
+        .respond(pending.gateId, {
           ok: true,
           value: { sessionId: pending.sessionId, approvalId: pending.approvalId, outcome },
         })
@@ -694,9 +402,9 @@ export function useDshSession(
 
   const answerQuestion = useCallback(
     (pending: PendingQuestion, answers: QuestionAnswerItem[]): void => {
-      setPendingQuestions((prev) => prev.filter((p) => p.rpcId !== pending.rpcId))
+      setPendingQuestions((prev) => prev.filter((p) => p.gateId !== pending.gateId))
       void dsh
-        .respond(pending.rpcId, {
+        .respond(pending.gateId, {
           ok: true,
           value: { sessionId: pending.sessionId, answer: { answers } },
         })
@@ -714,9 +422,9 @@ export function useDshSession(
 
   const cancelQuestion = useCallback(
     (pending: PendingQuestion): void => {
-      setPendingQuestions((prev) => prev.filter((p) => p.rpcId !== pending.rpcId))
+      setPendingQuestions((prev) => prev.filter((p) => p.gateId !== pending.gateId))
       void dsh
-        .respond(pending.rpcId, {
+        .respond(pending.gateId, {
           ok: false,
           error: { code: 'cancelled', message: 'the user cancelled' },
         })
@@ -732,53 +440,6 @@ export function useDshSession(
     [],
   )
 
-  const send = useCallback(
-    (text: string): void => {
-      const trimmed = text.trim()
-      if (trimmed === '' || busy) return
-      setBusy(true)
-      setMessages((prev) => [
-        ...prev,
-        { id: nextId(), role: 'user', text: trimmed },
-        // Thinking indicator: the first delta may take a while (reasoning
-        // models), silence must still look alive.
-        { id: nextId(), role: 'assistant', text: '', streaming: true },
-      ])
-      void (async () => {
-        try {
-          if (sessionIdRef.current === null) {
-            const workspaceId = workspaceIdRef.current ?? null
-            const cwd = workspaceId === null ? await dsh.defaultCwd() : undefined
-            sessionIdRef.current = await dsh.createSession(
-              workspaceId !== null
-                ? { workspaceId }
-                : { cwd: cwd ?? '' },
-            )
-            selfCreatedRef.current.add(sessionIdRef.current)
-            console.log(`[dsh-session] session created: ${sessionIdRef.current}`)
-            onSessionCreatedRef.current?.(sessionIdRef.current)
-          }
-          await dsh.prompt(sessionIdRef.current, trimmed)
-        } catch (error) {
-          console.log(`[dsh-session] send failed: ${String(error)}`)
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: 'assistant',
-              text: '',
-              error: error instanceof Error ? error.message : String(error),
-            },
-          ])
-        } finally {
-          setBusy(false)
-        }
-      })()
-    },
-    [busy],
-  )
-
-  /** Abort the active session's running turn. */
   const interrupt = useCallback((): void => {
     const id = sessionIdRef.current
     if (id === null) return
@@ -798,18 +459,56 @@ export function useDshSession(
   const dequeue = useCallback((itemId: string): void => {
     const id = sessionIdRef.current
     if (id === null) return
-    setQueue((prev) => prev.filter((item) => item.id !== itemId))
+    setQueue((prev) => prev.filter((item) => item.itemId !== itemId))
     void dsh.removeQueuedMessage(id, itemId).catch((error: unknown) => {
       console.log(`[dsh-session] dequeue failed: ${String(error)}`)
     })
   }, [])
+
+  const send = useCallback(
+    (text: string): void => {
+      const trimmed = text.trim()
+      if (trimmed === '' || busy) return
+      setBusy(true)
+      // No optimistic bubbles: the backend echo arrives as transcript items
+      // (user text, then reasoning/text blocks) within milliseconds.
+      void (async () => {
+        try {
+          if (sessionIdRef.current === null) {
+            const workspaceId = workspaceIdRef.current ?? null
+            const cwd = workspaceId === null ? await dsh.defaultCwd() : undefined
+            sessionIdRef.current = await dsh.createSession(
+              workspaceId !== null
+                ? { workspaceId }
+                : { cwd: cwd ?? '' },
+            )
+            selfCreatedRef.current.add(sessionIdRef.current)
+            onSessionCreatedRef.current?.(sessionIdRef.current)
+          }
+          await dsh.prompt(sessionIdRef.current, trimmed)
+        } catch (error) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              kind: 'assistant',
+              text: '',
+              error: error instanceof Error ? error.message : String(error),
+            },
+          ])
+        } finally {
+          setBusy(false)
+        }
+      })()
+    },
+    [busy],
+  )
 
   return {
     status,
     messages,
     busy,
     send,
-    turnTick,
     queue,
     interrupt,
     dequeue,

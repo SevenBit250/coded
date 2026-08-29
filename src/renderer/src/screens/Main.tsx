@@ -586,6 +586,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
   const session = useDshSession(selectedSession, {
     workspaceId: selectedProject,
     onSessionCreated: (id) => {
+      directory.pinSession(id)
       setSelectedSession(id)
       applyPending(id)
     },
@@ -593,14 +594,6 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
 
   // Live title/recency: a finished turn's title write rides the next
   // directory baseline (the mux-side title event never reaches the roster).
-  const { refresh: refreshDirectory } = directory
-  const turnTickRef = useRef(0)
-  useEffect(() => {
-    if (session.turnTick === turnTickRef.current) return
-    turnTickRef.current = session.turnTick
-    refreshDirectory()
-  }, [session.turnTick, refreshDirectory])
-
   /** Sessions with an answerable frame waiting (approval/question). */
   const pendingBySession = useMemo(() => {
     const set = new Set<string>()
@@ -695,6 +688,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
    *  first turn, harness parity) and open it immediately. */
   const addSession = (wsId: string): void => {
     void dsh.createSession({ workspaceId: wsId }).then((id) => {
+      directory.pinSession(id)
       setSelectedSession(id)
       applyPending(id)
     })
@@ -1180,7 +1174,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                 .filter((pending) => pending.sessionId === selectedSession)
                 .map((pending) => (
                   <QuestionCard
-                    key={pending.rpcId}
+                    key={pending.gateId}
                     pending={pending}
                     onSubmit={(answers) => session.answerQuestion(pending, answers)}
                     onCancel={() => session.cancelQuestion(pending)}
@@ -1221,7 +1215,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
             {session.queue.length > 0 && (
               <div className="queue-strip" role="list" aria-label="排队中的消息">
                 {session.queue.map((item) => (
-                  <div key={item.id} className="queue-item" role="listitem">
+                  <div key={item.itemId} className="queue-item" role="listitem">
                     <span className="queue-badge">
                       {item.placement === 'steering' ? '插话' : '排队'}
                     </span>
@@ -1230,7 +1224,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
                       type="button"
                       className="queue-remove"
                       aria-label="移除排队消息"
-                      onClick={() => session.dequeue(item.id)}
+                      onClick={() => session.dequeue(item.itemId)}
                     >
                       <Icon viewBox="0 0 16 16" strokeWidth={1.6}>
                         <path d="M4 4l8 8M12 4l-8 8" />
