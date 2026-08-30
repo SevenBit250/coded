@@ -287,7 +287,10 @@ export function useSession(
     (event: CodedSemanticEvent): void => {
       switch (event.type) {
         case 'transcript.appended': {
-          if (sessionIdRef.current !== null && event.sessionId !== sessionIdRef.current) return
+          // Strict session gate: a null ref (no active session yet) must NOT
+          // act as a wildcard — foreign sessions' items would leak into the
+          // transcript after the selection is cleared.
+          if (event.sessionId !== sessionIdRef.current) return
           upsertItem(event.item)
           return
         }

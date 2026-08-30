@@ -559,7 +559,7 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
   const session = useSession(selectedSession, {
     workspaceId: selectedProject,
     onSessionCreated: (id) => {
-      directory.pinSession(id)
+      directory.pinSession(id, selectedProject)
       setSelectedSession(id)
       applyPending(id)
     },
@@ -600,6 +600,36 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
       directory.workspaces.some((w) => w.sessions.some((s) => s.id === selectedSession && s.running)),
     [directory.workspaces, selectedSession],
   )
+
+  // Turn timer: wall-clock seconds since the running flag went up; ticks
+  // once a second while the turn runs, resets when it ends.
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null)
+  const [nowTick, setNowTick] = useState(Date.now())
+  useEffect(() => {
+    if (activeRunning) {
+      setTurnStartedAt((t) => t ?? Date.now())
+      const timer = setInterval(() => setNowTick(Date.now()), 1000)
+      return () => clearInterval(timer)
+    }
+    setTurnStartedAt(null)
+    return undefined
+  }, [activeRunning])
+  const turnSeconds =
+    turnStartedAt === null ? 0 : Math.max(0, Math.floor((nowTick - turnStartedAt) / 1000))
+  const turnLabel =
+    turnSeconds < 60
+      ? `已工作 ${String(turnSeconds)} 秒`
+      : `已工作 ${String(Math.floor(turnSeconds / 60))} 分 ${String(turnSeconds % 60)} 秒`
+
+  // Anchor-bar chips (in-session): the session's workspace — its pinned
+  // preset name joins below, next to the presets roster declaration.
+  const selectedInfo = useMemo(() => {
+    for (const w of directory.workspaces) {
+      const s = w.sessions.find((x) => x.id === selectedSession)
+      if (s !== undefined) return { title: s.title, workspace: w.title }
+    }
+    return null
+  }, [directory.workspaces, selectedSession])
 
   // The selected session must stay on the roster: archiving it (or removing
   // its whole workspace) drops it from the sidebar, and the selection has to
@@ -811,6 +841,9 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
     }
   }, [])
   const presetsSupported = caps.includes('presets') && presets !== null && presets.length > 0
+  // Anchor-bar chip: the session's pinned preset, displayed by roster name.
+  const sessionMode =
+    modeValue !== null ? (presets?.find((p) => p.id === modeValue)?.name ?? modeValue) : undefined
   // Draft preselect: the deployment default preset is what a new session will
   // actually run, so the selector shows it instead of an empty placeholder —
   // display matches the effective value. An explicit staged pick or a
@@ -1347,12 +1380,48 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
             />
           ) : (
           <main className={`content${session.messages.length > 0 ? ' in-session' : ''}`}>
-          <div className="watermark" aria-hidden="true">
-            C
-          </div>
+          {selectedSession !== null && (
+            <div className="session-titlebar">
+              <span className="titlebar-title">{selectedInfo?.title ?? '新会话'}</span>
+              {selectedInfo?.workspace !== undefined && (
+                <span className="title-chip">
+                  <Icon viewBox="0 0 24 24" strokeWidth={1.8}>
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                  </Icon>
+                  {selectedInfo.workspace}
+                </span>
+              )}
+              {sessionMode !== undefined && (
+                <span className="title-chip">
+                  <Icon>
+                    <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+                    <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+                    <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+                  </Icon>
+                  {sessionMode}
+                </span>
+              )}
+            </div>
+          )}
+          {session.messages.length === 0 && (
+            <div className="watermark" aria-hidden="true">
+              C
+            </div>
+          )}
           {session.messages.length > 0 && (
             <ChatStream
               messages={session.messages}
+              header={
+                turnStartedAt !== null ? (
+                  <div className="turn-status">
+                    <Icon viewBox="0 0 24 24" strokeWidth={1.6}>
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 7v5l3 2" />
+                    </Icon>
+                    {turnLabel}
+                  </div>
+                ) : undefined
+              }
               trailTick={
                 session.pendingApprovals.length + session.pendingQuestions.length
               }
@@ -1385,6 +1454,9 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
             {session.messages.length === 0 && <h1 className="greeting">{greeting()}</h1>}
 
           <div className="composer">
+            {/* Head row (workspace + mode) is a home-draft affordance only:
+                in-session the info lives in the anchor-bar chips. */}
+            {selectedSession === null && (
             <div className="composer-head">
               <Dropdown
                 options={projectOptions}
@@ -1409,6 +1481,7 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
                 />
               )}
             </div>
+            )}
             <div className="composer-body">
             {session.queue.length > 0 && (
               <div className="queue-strip" role="list" aria-label="排队中的消息">

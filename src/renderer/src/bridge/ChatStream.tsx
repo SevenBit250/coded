@@ -1,12 +1,15 @@
 /**
  * ChatStream — the transcript view over semantic transcript items (§2.3):
- * user content right, assistant markdown left, reasoning + tool-call blocks
- * inline, streaming tails marked. Auto-scrolls to the newest entry.
+ * user content right (light bubble), assistant markdown left as plain
+ * text flow (reference style — no card), reasoning + tool-call blocks as
+ * quiet fold rows inline. Auto-scrolls to the newest entry.
+ * `header` renders at the top of the scroll content (turn timer);
  * `children` render at the tail (the answerable gates live there);
  * `trailTick` tells the scroller the tail changed without diffing children.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReactElement, ReactNode } from 'react'
+import { Icon } from '@uibase'
 import type { ChatMessage } from './use-session'
 import { Markdown } from './Markdown'
 
@@ -14,10 +17,41 @@ export interface ChatStreamProps {
   messages: ChatMessage[]
   /** Bumped when the trailing children change identity (e.g. gate count). */
   trailTick?: number
+  /** Rendered as the first element of the scroll content (turn timer). */
+  header?: ReactNode
   children?: ReactNode
 }
 
-/** One collapsible tool-call card (running → done). */
+/** Hover action row under one message: copy + (timestamp when available). */
+function MsgActions({ text }: { text: string }): ReactElement {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="msg-actions">
+      <button
+        type="button"
+        aria-label="复制内容"
+        onClick={() => {
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 1200)
+          })
+        }}
+      >
+        {copied ? (
+          '已复制'
+        ) : (
+          <Icon viewBox="0 0 24 24" strokeWidth={1.6}>
+            {/* lucide:copy */}
+            <rect x="9" y="9" width="12" height="12" rx="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </Icon>
+        )}
+      </button>
+    </div>
+  )
+}
+
+/** One collapsible tool-call block (running → done). */
 function ToolBlock({ message }: { message: ChatMessage }): ReactElement {
   const [open, setOpen] = useState(false)
   if (message.kind !== 'tool') return <></>
@@ -57,7 +91,7 @@ function ToolBlock({ message }: { message: ChatMessage }): ReactElement {
   )
 }
 
-/** One collapsible reasoning ("thinking") card: open while streaming,
+/** One collapsible reasoning ("thinking") block: open while streaming,
  *  collapsed once the block ends; click toggles a finished block. */
 function ReasoningBlock({ message }: { message: ChatMessage }): ReactElement {
   // Hooks run unconditionally: the item kind never changes for a stable id,
@@ -94,42 +128,70 @@ function ReasoningBlock({ message }: { message: ChatMessage }): ReactElement {
   )
 }
 
-export function ChatStream({ messages, trailTick = 0, children }: ChatStreamProps): ReactElement {
+export function ChatStream({ messages, trailTick = 0, header, children }: ChatStreamProps): ReactElement {
+  const streamRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const [jumpVisible, setJumpVisible] = useState(false)
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages, trailTick])
 
+  const onScroll = (): void => {
+    const el = streamRef.current
+    if (el === null) return
+    const fromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+    setJumpVisible(fromBottom > 240)
+  }
+
+  const jumpToBottom = (): void => {
+    streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' })
+  }
+
   return (
-    <div className="chat-stream" aria-label="会话消息">
-      {messages.map((message) =>
-        message.kind === 'tool' ? (
-          <ToolBlock key={message.id} message={message} />
-        ) : message.kind === 'reasoning' ? (
-          <ReasoningBlock key={message.id} message={message} />
-        ) : message.kind === 'user' ? (
-          <div key={message.id} className="chat-row chat-row--user">
-            <div className="chat-bubble chat-bubble--user">
-              {message.content.map((part, i) => (part.type === 'text' ? <span key={i}>{part.text}</span> : null))}
+    <div className="chat-stream-wrap">
+      <div ref={streamRef} className="chat-stream" onScroll={onScroll} aria-label="会话消息">
+        {header}
+        {messages.map((message) =>
+          message.kind === 'tool' ? (
+            <ToolBlock key={message.id} message={message} />
+          ) : message.kind === 'reasoning' ? (
+            <ReasoningBlock key={message.id} message={message} />
+          ) : message.kind === 'user' ? (
+            <div key={message.id} className="chat-row chat-row--user">
+              <div className="chat-bubble chat-bubble--user">
+                {message.content.map((part, i) => (part.type === 'text' ? <span key={i}>{part.text}</span> : null))}
+              </div>
+              <MsgActions text={message.content.map((p) => (p.type === 'text' ? p.text : '')).join('')} />
             </div>
-          </div>
-        ) : (
-          <div key={message.id} className="chat-row chat-row--assistant">
-            <div
-              className={`chat-bubble chat-bubble--assistant${message.streaming ? ' chat-bubble--streaming' : ''}`}
-            >
+          ) : (
+            <div key={message.id} className="chat-row chat-row--assistant">
               {message.error !== undefined ? (
-                <span className="chat-error">发送失败：{message.error}</span>
+                <div className="chat-error">发送失败：{message.error}</div>
               ) : (
-                <Markdown text={message.text} />
+                <div className={`chat-assistant${message.streaming ? ' chat-assistant--streaming' : ''}`}>
+                  <Markdown text={message.text} />
+                </div>
               )}
+              {!message.streaming && message.text !== '' && <MsgActions text={message.text} />}
             </div>
-          </div>
-        ),
+          ),
+        )}
+        {children}
+        <div ref={endRef} />
+      </div>
+      {jumpVisible && (
+        <button
+          type="button"
+          className="chat-jump"
+          aria-label="滚动到底部"
+          onClick={jumpToBottom}
+        >
+          <Icon viewBox="0 0 24 24" strokeWidth={1.8}>
+            <path d="m6 9 6 6 6-6" />
+          </Icon>
+        </button>
       )}
-      {children}
-      <div ref={endRef} />
     </div>
   )
 }

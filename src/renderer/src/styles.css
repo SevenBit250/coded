@@ -72,9 +72,12 @@ body {
 
 /* ============================================================
    Custom scrollbar — overlay, no layout cost.
-   A thin hairline at rest that thickens slightly on hover, fades out when
-   idle. Applied globally so every scrollable pane (sidebar list, dropdown
-   panels, future chat history) shares the same chrome-free feel.
+   Constant-width solid thumb: hover only darkens the color and
+   never touches geometry. No border/background-clip insets —
+   Chromium repaints styled thumbs inconsistently around :hover
+   and those tricks read as the thumb changing width. Applied
+   globally so every scrollable pane (sidebar list, dropdown
+   panels, transcript) shares the same chrome-free feel.
    ============================================================ */
 ::-webkit-scrollbar {
   width: 6px;
@@ -88,8 +91,6 @@ body {
 ::-webkit-scrollbar-thumb {
   background: rgba(var(--ink-rgb, 20, 22, 26), 0.14);
   border-radius: 999px;
-  border: 1.5px solid transparent;
-  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -681,11 +682,51 @@ html[data-platform='win32'] .anchor-bar {
 }
 
 
-/* ---- CodedBridge chat (S1): minimal transcript over the composer. ---- */
+/* ---- CodedBridge chat (S1): transcript column + bottom-pinned composer.
+   Layout contract: .content is a bounded flex column (grid 1fr above);
+   in-session the chat-stream is the ONLY scroller and the composer is
+   pinned to the bottom — the reference design. The home state keeps the
+   centered composition (greeting + centered composer). ---- */
 
 .content.in-session {
   align-items: stretch;
-  padding-bottom: 24px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.chat-stream-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-jump {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(var(--shadow-rgb), 0.1);
+  z-index: 2;
+}
+.chat-jump:hover {
+  background: var(--bg-soft);
+  color: var(--text);
+}
+.chat-jump svg {
+  width: 16px;
+  height: 16px;
 }
 
 .chat-stream {
@@ -695,29 +736,98 @@ html[data-platform='win32'] .anchor-bar {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 18px 6px;
-  width: min(660px, 92%);
-  margin: 0 auto;
+  /* Full-bleed scroller: the bar hugs the panel's right edge. The message
+     column is centered via symmetric padding, not a narrowed box — a width
+     here would pull the scrollbar inward. */
+  padding: 20px max(40px, calc((100% - 760px) / 2)) 12px;
 }
 
 .content.in-session .composer-anchor {
   position: static;
   transform: none;
-  width: min(660px, 92%);
+  /* Tracks the message column exactly (same formula as .chat-stream's
+     symmetric padding) so both share one center axis at every width. */
+  width: min(760px, calc(100% - 80px));
   margin: 0 auto;
+  flex: none;
+  padding-bottom: 16px;
+}
+
+/* In-session the composer loses its head row: the workspace + mode info
+   moves to the anchor bar (title chips) and the preset is pinned anyway. */
+.content.in-session .composer-head {
+  display: none;
+}
+
+/* Turn timer: first row of the transcript while a turn runs. */
+.turn-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* In-session session title bar: an opaque layout row (NOT an overlay) —
+   the transcript physically starts below it, nothing ever slides under.
+   Full panel bleed (escapes .content's side padding); keeps the window
+   drag region; right inset clears the caption buttons. */
+.session-titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 14px 0 24px;
+  min-width: 0;
+  border-bottom: 1px solid var(--hairline);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+html[data-platform='win32'] .session-titlebar {
+  padding-right: 150px;
+}
+.titlebar-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--heading);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.title-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(var(--ink-rgb), 0.045);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.title-chip svg {
+  width: 13px;
+  height: 13px;
   flex: none;
 }
 
 .chat-row {
   display: flex;
+  flex-direction: column;
 }
 
 .chat-row--user {
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .chat-row--assistant {
-  justify-content: flex-start;
+  align-items: flex-start;
 }
 
 .chat-bubble {
@@ -736,13 +846,17 @@ html[data-platform='win32'] .anchor-bar {
   border-bottom-right-radius: 5px;
 }
 
-.chat-bubble--assistant {
-  background: rgba(var(--ink-rgb), 0.06);
+/* Assistant content: plain text flow (reference style — no card), full
+   column width; the streaming caret rides the block itself. */
+.chat-assistant {
+  width: 100%;
+  font-size: 13.5px;
+  line-height: 1.7;
   color: var(--text, #26272d);
-  border-bottom-left-radius: 5px;
+  word-break: break-word;
 }
 
-.chat-bubble--streaming::after {
+.chat-assistant--streaming::after {
   content: '▍';
   opacity: 0.5;
   animation: chat-cursor 0.9s steps(1) infinite;
@@ -752,6 +866,39 @@ html[data-platform='win32'] .anchor-bar {
   50% {
     opacity: 0;
   }
+}
+
+/* Hover actions under a message (copy). In-flow but quiet. */
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.chat-row:hover .msg-actions {
+  opacity: 1;
+}
+.msg-actions button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  padding: 2px 8px;
+  border-radius: 7px;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.msg-actions button:hover {
+  background: rgba(var(--ink-rgb), 0.05);
+  color: var(--text);
+}
+.msg-actions svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* ---- Dialog content: rename (workspace/session) + delete confirm. ---- */
@@ -1019,19 +1166,23 @@ html[data-platform='win32'] .anchor-bar {
 
 /* ---- Tool-call blocks in the transcript. ---- */
 
-.tool-card {
-  max-width: 82%;
-  min-width: 260px;
-  border-radius: 12px;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
-  background: var(--panel, rgba(128, 128, 128, 0.08));
+/* Fold family (tool calls + reasoning): quiet rows INSIDE the message flow —
+   a head row (status dot + title + meta + chevron) and, when open, an
+   indented body behind a left rule with its own scroll. No card boxes. */
+.tool-card,
+.reasoning-card {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
   overflow: hidden;
   font-size: 12px;
-  color: var(--text);
+  color: var(--text-dim, #8a8f99);
 }
 
-.tool-card--running {
-  border-color: var(--accent, #e8734a);
+.tool-card--running .tool-title,
+.reasoning-card--streaming .tool-title {
+  color: var(--accent, #e8734a);
 }
 
 .tool-head {
@@ -1039,13 +1190,18 @@ html[data-platform='win32'] .anchor-bar {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border: none;
+  border-radius: 8px;
   background: transparent;
   color: inherit;
   font-size: 12px;
   cursor: pointer;
   text-align: left;
+}
+
+.tool-head:hover {
+  background: rgba(var(--ink-rgb), 0.045);
 }
 
 .tool-status {
@@ -1066,7 +1222,7 @@ html[data-platform='win32'] .anchor-bar {
 }
 
 .tool-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1078,6 +1234,8 @@ html[data-platform='win32'] .anchor-bar {
   flex: none;
   font-size: 11px;
   color: var(--muted, #8a8f99);
+  /* Meta sits beside the title (reference look); only the chevron pushes right. */
+  margin-right: auto;
 }
 
 .tool-meta--running {
@@ -1086,6 +1244,7 @@ html[data-platform='win32'] .anchor-bar {
 
 .tool-chev {
   flex: none;
+  margin-left: auto;
   color: var(--muted, #8a8f99);
 }
 
@@ -1096,39 +1255,36 @@ html[data-platform='win32'] .anchor-bar {
   padding: 0 10px 8px;
 }
 
+.tool-body {
+  margin: 2px 10px 8px 24px;
+  padding-left: 10px;
+  border-left: 2px solid var(--hairline, rgba(128, 128, 128, 0.2));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .tool-pre {
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--code-bg, rgba(128, 128, 128, 0.14));
+  padding: 0;
+  background: transparent;
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 11.5px;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 180px;
+  max-height: 260px;
   overflow-y: auto;
 }
 
-/* Reasoning ("thinking") card — softer tone than tool cards. */
+/* Reasoning ("thinking") block — same fold family, dimmer text. */
 .reasoning-card {
-  max-width: 82%;
-  min-width: 260px;
-  border-radius: 12px;
-  border: 1px dashed var(--border, rgba(128, 128, 128, 0.35));
-  background: transparent;
-  overflow: hidden;
-  font-size: 12px;
   color: var(--muted, #8a8f99);
-}
-
-.reasoning-card--streaming {
-  border-color: var(--accent, #e8734a);
 }
 
 .reasoning-text {
   color: var(--muted, #8a8f99);
-  max-height: 220px;
+  max-height: 260px;
 }
 
 .dlg {

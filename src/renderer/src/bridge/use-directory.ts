@@ -37,12 +37,12 @@ export interface CodedDirectory {
   /** Re-pull both baselines (after mutations the host does not echo). */
   refresh: () => void
   /**
-   * Keep a just-sent session visible in the sidebar through the blank→running
-   * gap: the shell's lazy create pins it at send time, and the first phase
-   * event (or baseline refresh) clears the blank bit naturally. Without the
-   * pin the card the user's send just earned would flicker away.
+   * Keep a just-sent session visible through the blank→running gap AND anchor
+   * it to its workspace before the baseline absorbs it: the session.added
+   * frame carries no workspace ownership, so without the pin the
+   * ghost-cleanup pass would drop the fresh selection.
    */
-  pinSession: (sessionId: string) => void
+  pinSession: (sessionId: string, workspaceId: string | null) => void
 }
 
 /** Semantic event kinds this hook consumes (adapter-side filter list). */
@@ -78,19 +78,26 @@ function compose(
   workspaces: CodedWorkspace[],
   sessions: Map<string, DirectorySession>,
   archived: Set<string>,
-  pinned: Set<string>,
+  pinned: Map<string, string | null>,
 ): DirectoryWorkspace[] {
-  return workspaces.map((workspace) => ({
-    id: workspace.workspaceId,
-    title: workspace.title,
-    path: workspace.path,
-    sessions: workspace.sessionIds
+  return workspaces.map((workspace) => {
+    // Shell-sent sessions are anchored to their workspace BEFORE the baseline
+    // learns them (session.added carries no ownership): append the pinned ids
+    // bound to this workspace that the roster does not list yet.
+    const listed = new Set(workspace.sessionIds)
+    const pinnedHere = [...pinned.entries()]
+      .filter(([id, wsId]) => wsId === workspace.workspaceId && !listed.has(id))
+      .map(([id]) => sessions.get(id))
+      .filter((s): s is DirectorySession => s !== undefined)
+    const sessions_ = workspace.sessionIds
       .map((id) => sessions.get(id))
       .filter(
         (s): s is DirectorySession =>
           s !== undefined && (!s.blank || pinned.has(s.id)) && !archived.has(s.id),
-      ),
-  }))
+        )
+      .concat(pinnedHere.filter((s) => !archived.has(s.id)))
+    return { id: workspace.workspaceId, title: workspace.title, path: workspace.path, sessions: sessions_ }
+  })
 }
 
 export function useDirectory(): CodedDirectory {
@@ -99,8 +106,8 @@ export function useDirectory(): CodedDirectory {
   const workspacesRef = useRef<CodedWorkspace[]>([])
   const sessionsRef = useRef(new Map<string, DirectorySession>())
   const archivedRef = useRef(new Set<string>())
-  /** Shell-created sessions kept visible while blank. */
-  const pinnedRef = useRef(new Set<string>())
+  /** Shell-sent sessions kept visible (and workspace-anchored) while blank. */
+  const pinnedRef = useRef(new Map<string, string | null>())
   const subscribedRef = useRef(false)
 
   /** Recompose + publish from the refs. */
@@ -108,10 +115,10 @@ export function useDirectory(): CodedDirectory {
     setWorkspaces(compose(workspacesRef.current, sessionsRef.current, archivedRef.current, pinnedRef.current))
   }, [])
 
-  /** Keep one session visible through the send-time blank gap (lazy create). */
+  /** Anchor one shell-sent session to its workspace (lazy create). */
   const pinSession = useCallback(
-    (sessionId: string): void => {
-      pinnedRef.current.add(sessionId)
+    (sessionId: string, workspaceId: string | null): void => {
+      pinnedRef.current.set(sessionId, workspaceId)
       publish()
     },
     [publish],
