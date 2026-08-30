@@ -361,7 +361,9 @@ html[data-theme='dark'] .startup-shark {
   left: 0;
   right: 0;
   z-index: 10;
-  height: 40px;
+  /* One chrome height everywhere (startup / home anchor / session titlebar),
+     matching the Windows titleBarOverlay caption buttons (main/index.ts). */
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -84,7 +84,10 @@ function createWindow(): BrowserWindow {
           titleBarOverlay: {
             color: '#00000000',
             symbolColor: '#7d828d',
-            height: 40,
+            // Matches the app's chrome bars (.anchor-bar / .session-titlebar /
+            // .startup-chrome, all 46px) so the hover/click zones fill the bar
+            // exactly instead of floating as a shorter strip inside it.
+            height: 46,
           },
         }
       : { frame: CHROME.frame }),
