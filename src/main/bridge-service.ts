@@ -1,39 +1,44 @@
 /**
- * Bridge service (main process): exposes the CodedBridge to the renderer
- * over IPC and owns the runtime + bridge lifecycle.
+ * Bridge service (main process): the thin seam between the renderer, the
+ * backend plugin system, and the CodedBridge client.
  *
- * Flow: spawn the harness CLI as a pure Node child (ELECTRON_RUN_AS_NODE, so
- * dev and the packaged app share one code path), wait for its readiness line,
- * then race the bridge client at the adapter's pipe. Frames and status flow
- * to the renderer; the renderer never sees the pipe or the harness process.
+ * Backend-agnostic by construction: adapter plugins are discovered through
+ * the backends loader (directory packages with a manifest), the selected one
+ * is driven by the lifecycle manager (start / auto-restart / heartbeat), and
+ * a BridgeClient is (re)targeted at whatever pipe endpoint the binding
+ * reports. All backend knowledge lives in the plugins — the dsh binding is
+ * coded-adapter's packages/backend; this file's only concerns are wiring and
+ * status derivation.
  */
 import { app, BrowserWindow, ipcMain } from 'electron'
-import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { IPC } from '../shared/ipc'
-import type { BridgeStatus, BridgeStreamHandlers } from '../shared/bridge'
+import type { BridgeStatus } from '../shared/bridge'
 import { BridgeClient } from './bridge-client'
 import type { StreamHandlers } from './bridge-client'
-import { DshRuntime } from './dsh-runtime'
-import { logBridge, logDsh, logService } from './logger'
+import { backendScope, logBridge, logService } from './logger'
+import { scanAdapters } from './backends/loader'
+import { BackendManager } from './backends/manager'
+import type { BackendStatus, ScannedBackend } from './backends/types'
 
-let runtime: DshRuntime | null = null
-let bridge: BridgeClient | null = null
-let runtimeStatus: 'starting' | 'ready' | 'exited' | 'failed' = 'starting'
+let manager: BackendManager | null = null
+let client: BridgeClient | null = null
+let clientPipePath: string | null = null
+let backendStatus: BackendStatus = 'starting'
 let bridgeStatus: 'connecting' | 'connected' | 'disconnected' | 'stopped' = 'disconnected'
 let statusValue: BridgeStatus = 'starting'
-const statusListeners = new Set<(status: BridgeStatus) => void>()
 
-/** Derived lifecycle: runtime gates everything, bridge rides on top of it. */
+/** Derived lifecycle: backend gates everything, bridge rides on top of it. */
 function recomputeStatus(): void {
   let next: BridgeStatus
-  if (runtimeStatus === 'failed') next = 'failed'
-  else if (runtimeStatus === 'exited') next = 'runtime-exited'
-  else if (runtimeStatus === 'starting') next = 'starting'
+  if (backendStatus === 'failed') next = 'failed'
+  else if (backendStatus === 'exited') next = 'runtime-exited'
+  else if (backendStatus === 'starting') next = 'starting'
   else next = bridgeStatus === 'connected' ? 'bridge-connected' : 'bridge-disconnected'
   if (next === statusValue) return
   statusValue = next
   logService.info(`status -> ${next}`)
-  for (const cb of statusListeners) cb(next)
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(IPC.bridge.status, { status: next })
   }
@@ -41,10 +46,10 @@ function recomputeStatus(): void {
 
 function registerBridgeIpc(): void {
   ipcMain.handle(IPC.bridge.statusGet, () => statusValue)
-  ipcMain.handle(IPC.bridge.capabilitiesGet, () => bridge?.capabilities() ?? [])
+  ipcMain.handle(IPC.bridge.capabilitiesGet, () => client?.capabilities() ?? [])
   ipcMain.handle(IPC.bridge.invoke, (_event, method: string, payload: unknown) => {
-    if (bridge === null) throw new Error('bridge not started')
-    return bridge.call(method, payload).catch((error: unknown) => {
+    if (client === null) throw new Error('bridge not started')
+    return client.call(method, payload).catch((error: unknown) => {
       logService.warn(`invoke ${method} failed: ${String(error)}`)
       throw error
     })
@@ -53,19 +58,20 @@ function registerBridgeIpc(): void {
   // Frames may arrive before the openStream invoke resolves back to the
   // renderer (the adapter replays fast), so buffer until the id is known.
   ipcMain.handle(IPC.bridge.streamOpen, (event, stream: 'events', payload: unknown) => {
+    if (client === null) throw new Error('bridge not started')
     const sender = event.sender
     let id = -1
-    const buffered: { id: number; envelope: unknown }[] = []
+    const buffered: { ready: boolean; envelope: unknown }[] = []
     const deliver = (channel: string, payload2: unknown): void => {
       if (!sender.isDestroyed()) sender.send(channel, payload2)
     }
     const handlers: StreamHandlers = {
       onFrame: (envelope) => {
-        if (id === -1) buffered.push({ id: -1, envelope })
+        if (id === -1) buffered.push({ ready: false, envelope })
         else deliver(IPC.bridge.frame, { id, envelope })
       },
       onOpen: () => {
-        if (id === -1) buffered.push({ id: -1, envelope: { type: 'bridge/stream-ready' } })
+        if (id === -1) buffered.push({ ready: true, envelope: null })
         else deliver(IPC.bridge.streamReady, { id })
       },
       onEnd: (reason) => {
@@ -74,15 +80,11 @@ function registerBridgeIpc(): void {
       },
     }
     logService.info(`streamOpen ${stream}`)
-    if (bridge === null) throw new Error('bridge not started')
-    return bridge.openStream(stream, payload, handlers).then((streamId) => {
+    return client.openStream(stream, payload, handlers).then((streamId) => {
       id = streamId
       for (const item of buffered) {
-        if (item.envelope !== null && typeof item.envelope === 'object' && (item.envelope as {type?: string}).type === 'bridge/stream-ready') {
-          deliver(IPC.bridge.streamReady, { id })
-        } else {
-          deliver(IPC.bridge.frame, { id, envelope: item.envelope })
-        }
+        if (item.ready) deliver(IPC.bridge.streamReady, { id })
+        else deliver(IPC.bridge.frame, { id, envelope: item.envelope })
       }
       return id
     })
@@ -90,54 +92,100 @@ function registerBridgeIpc(): void {
 
   ipcMain.on(IPC.bridge.streamAbort, (_event, id: number) => {
     logService.info(`streamAbort ${String(id)}`)
-    bridge?.abortStream(id)
+    client?.abortStream(id)
   })
 }
 
-/** Harness root: env override wins; dev default sits beside this repo. */
-function harnessRoot(): string {
-  const fromEnv = process.env['DSH_HARNESS_ROOT']
-  if (fromEnv !== undefined && fromEnv !== '') return fromEnv
-  return resolve(__dirname, '../../../deepseek-harness')
+/** (Re)target the CB client at a binding-reported pipe. A restart may mint a
+ *  fresh endpoint; the old client is torn down (failing the renderer's
+ *  in-flight work) and the renderer's reconnect/自愈 path rebuilds from the
+ *  next connected broadcast. */
+async function ensureClient(pipePath: string): Promise<void> {
+  if (client !== null && clientPipePath === pipePath) return
+  const old = client
+  client = null
+  await old?.stop()
+  clientPipePath = pipePath
+  const next = new BridgeClient({
+    pipePath,
+    version: app.getVersion(),
+    onStatus: (status) => {
+      bridgeStatus = status
+      recomputeStatus()
+    },
+    log: (message) => logBridge.info(message),
+  })
+  client = next
+  // Liveness probe for the manager's watchdog; cleared with the client.
+  manager?.setProbe(() => next.call('coded.ping', {}).then(() => undefined))
+  next.start()
 }
 
-/** Start the harness runtime, then the bridge. Never throws: failures land
- *  in the status broadcast for the renderer to present. */
+/** Adapter directories: user install point, env override, dev checkout. */
+function adapterDirs(): string[] {
+  const dirs = [join(app.getPath('userData'), 'adapters')]
+  const fromEnv = process.env['CODED_ADAPTERS_DIR']
+  if (fromEnv !== undefined && fromEnv !== '') dirs.push(fromEnv)
+  // Dev default: the adapter repo sits beside the shell repo in the workspace.
+  const dev = resolve(__dirname, '../../../coded-adapter/packages/backend')
+  if (existsSync(dev)) dirs.push(dev)
+  return dirs
+}
+
+function bootstrapFailed(message: string): void {
+  logService.error(message)
+  backendStatus = 'failed'
+  recomputeStatus()
+}
+
+/** Discover adapters, start the selected backend, connect the bridge. Never
+ *  throws: failures land in the status broadcast for the renderer to present. */
 export function startBridgeService(): void {
   registerBridgeIpc()
-  // The bridge scope is minted here once per app run (single source of
-  // truth): the runtime child learns it through env, the bridge client
-  // connects to the same name. Per-run names sidestep the Windows
-  // handle-inheritance EADDRINUSE a zombie child would otherwise cause.
-  const scope = `p${String(process.pid)}-${Math.random().toString(36).slice(2, 6)}`
-  runtime = new DshRuntime({
-    harnessRoot: harnessRoot(),
-    // Host-only tree (no HTTP/browser surface); readiness is the bridge's own
-    // listening line, not a web URL.
-    args: ['--profile', 'coded'],
-    extraEnv: { DSH_CODED_BRIDGE_SCOPE: scope },
-    log: (line) => logDsh.info(line),
-  })
-  runtime.on('status', (status: 'starting' | 'ready' | 'exited' | 'failed') => {
-    runtimeStatus = status
-    recomputeStatus()
-  })
-  void runtime.start().then(() => {
-    bridge = new BridgeClient({
-      scope,
-      version: app.getVersion(),
+  void (async () => {
+    const found = await scanAdapters(adapterDirs(), {
+      warn: (message) => logService.warn(message),
+      info: (message) => logService.info(message),
+    })
+    if (found.size === 0) {
+      bootstrapFailed('no backend adapters discovered (searched userData/adapters, CODED_ADAPTERS_DIR, dev checkout)')
+      return
+    }
+    const envId = process.env['CODED_BACKEND']
+    let selected: ScannedBackend | undefined
+    if (envId !== undefined && envId !== '') {
+      selected = found.get(envId)
+      if (selected === undefined) {
+        bootstrapFailed(`CODED_BACKEND=${envId} not found; available: ${[...found.keys()].join(', ')}`)
+        return
+      }
+    } else if (found.size === 1) {
+      selected = [...found.values()][0]
+    } else {
+      bootstrapFailed(`multiple adapters available (${[...found.keys()].join(', ')}); set CODED_BACKEND to choose`)
+      return
+    }
+    logService.info(`backend "${selected.manifest.id}" (${selected.manifest.label}) from ${selected.dir}`)
+    manager = new BackendManager({
       onStatus: (status) => {
-        bridgeStatus = status
+        backendStatus = status
         recomputeStatus()
       },
-      log: (message) => logBridge.info(message),
+      onLog: (line) => backendScope(selected!.manifest.id).info(line),
+      onPipePath: (pipePath) => {
+        void ensureClient(pipePath)
+      },
+      log: (message) => logService.info(`[${selected!.manifest.id}] ${message}`),
     })
-    bridge.start()
+    await manager.start(selected)
+  })().catch((error: unknown) => {
+    bootstrapFailed(`backend bootstrap failed: ${String(error)}`)
   })
 }
 
-/** Idempotent teardown for app quit: stop the bridge, then the process tree. */
+/** Idempotent teardown for app quit: stop the manager (binding included),
+ *  then the bridge client. */
 export async function stopBridgeService(): Promise<void> {
-  await bridge?.stop()
-  await runtime?.stop()
+  await manager?.stop()
+  await client?.stop()
 }

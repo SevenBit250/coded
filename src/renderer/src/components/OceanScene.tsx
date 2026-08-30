@@ -6,7 +6,7 @@ import type { ReactElement } from 'react'
  * the whole window, with the shark mark fixed at center underneath. The
  * dots never move — the motion comes from a two-octave brightness field
  * that sweeps organic clusters of dots in and out, like light drifting
- * across water (the deepseek.com/harness hero dot-matrix look). Purely
+ * across water (the reference hero dot-matrix look this scene reproduces). Purely
  * ambient — no pointer interaction. Dots read slightly stronger toward the
  * bottom; overall alpha stays low so it blends with the translucent glass.
  */

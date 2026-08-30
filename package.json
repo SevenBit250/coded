@@ -2,7 +2,7 @@
   "name": "coded",
   "productName": "Coded",
   "version": "0.1.0",
-  "description": "Coded — a DeepSeek Harness desktop shell (Electron, Plan B): frameless window, frosted-glass startup, electron-vite + React 18 + TypeScript.",
+  "description": "Coded — an agent desktop shell (Electron): frameless window, frosted-glass startup, pluggable agent backends over the CodedBridge protocol.",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

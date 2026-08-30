@@ -134,6 +134,7 @@ export type BridgeFrameType = BridgeFrame['t']
 export type CodedMethodClass = 'query' | 'control'
 export const CODED_METHOD_CLASS: Readonly<Record<string, CodedMethodClass>> = {
   'coded.describe': 'query',
+  'coded.ping': 'query',
   'coded.workspace.list': 'query',
   'coded.session.list': 'query',
   'coded.session.history': 'query',
