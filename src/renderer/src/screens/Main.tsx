@@ -18,7 +18,6 @@ import {
   useShortcut,
 } from '@uibase'
 import type { DropdownAction, DropdownOption } from '@uibase'
-import type { ThemeName } from '../theme'
 import { loadSidebarView, saveSidebarView } from '../sidebar-view'
 import type { SidebarViewState } from '../sidebar-view'
 import { loadLastWorkspace, saveLastWorkspace } from '../last-workspace'
@@ -28,6 +27,9 @@ import { ApprovalCard, QuestionCard } from '../bridge/gates'
 import { useSession } from '../bridge/use-session'
 import { useDirectory } from '../bridge/use-directory'
 import { bridge } from '../bridge/client'
+import { SettingsNav, SettingsPane } from './Settings'
+import type { SettingsCategory } from './Settings'
+import type { ThemeChoice } from '../theme'
 import type { CodedAccessMode, CodedAgentPreset, CodedModelsSnapshot } from '@coded/bridge-protocol'
 
 /** Main screen props. */
@@ -36,11 +38,10 @@ export interface MainProps {
    *  sits pre-mounted at opacity 0 under the startup glass; the flip happens
    *  in the same commit that unmounts Startup — one paint, no gap. */
   visible: boolean
-  /** Active theme (the toggle shows where a click leads). Temporary wiring
-   *  until a real settings surface exists. */
-  theme: ThemeName
-  /** Flip light <-> dark. */
-  onToggleTheme: () => void
+  /** The user's theme choice ('system' tracks the OS; App owns the state). */
+  themeChoice: ThemeChoice
+  /** Change the persisted theme choice. */
+  onThemeChoice: (choice: ThemeChoice) => void
 }
 
 /** Sidebar menu icon names (line icons matching the reference). */
@@ -499,7 +500,12 @@ function WorkspaceRow({
  * and projects, resizable by dragging the sash on its right edge; a welcoming
  * content column (watermark, greeting, composer), and window chrome top-right.
  */
-export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement {
+export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactElement {
+  // The sidebar/content pairing has two surfaces: the workspace (chat) and
+  // the settings panel. Settings swaps BOTH: the sidebar turns into the
+  // category switcher, the content column into setting cards.
+  const [surface, setSurface] = useState<'chat' | 'settings'>('chat')
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('appearance')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [resizing, setResizing] = useState(false)
@@ -1134,6 +1140,14 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
       </div>
       <div className={`main-body${sidebarOpen ? '' : ' collapsed'}`}>
         <nav className="sidebar" style={{ width: sidebarWidth }}>
+          {surface === 'settings' ? (
+            <SettingsNav
+              category={settingsCategory}
+              onSelect={setSettingsCategory}
+              onBack={() => setSurface('chat')}
+            />
+          ) : (
+            <>
           <div className="menu">
             {MENU.map((item) => (
               <button
@@ -1279,10 +1293,17 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           <div className="side-gap" />
 
           <div className="side-footer">
-            {/* Harness parity: the only footer affordance is the Settings
-                trigger row (gear + label); there is no user row or task
-                toggle here. */}
-            <button className="settings-row" aria-label="设置">
+            {/* The only footer affordance is the Settings trigger row
+                (gear + label); it swaps the sidebar/content into the
+                settings surface. */}
+            <button
+              className="settings-row"
+              aria-label="设置"
+              onClick={() => {
+                setSurface('settings')
+                setSettingsCategory('appearance')
+              }}
+            >
               <Icon className="settings-ico">
                 <path d="M12.2 2h-.44a2 2 0 0 0 2 2v.44a2 2 0 0 0 2 2h.44a2 2 0 0 1 2 2v.44a2 2 0 0 0 2 2v.44a2 2 0 0 1 2 2h.44a2 2 0 0 0 2 2v.44a2 2 0 0 0-2 2h-.44a2 2 0 0 1-2 2v-.44a2 2 0 0 0-2 2h-.44a2 2 0 0 1-2 2v-.44a2 2 0 0 0-2 2h-.44a2 2 0 0 1-2-2v-.44a2 2 0 0 0-2-2h-.44a2 2 0 0 1-2-2v-.44a2 2 0 0 0-2-2h-.44a2 2 0 0 1-2-2v-.44a2 2 0 0 0-2-2z" />
                 <circle cx="18" cy="18" r="3" />
@@ -1290,6 +1311,8 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
               <span>设置</span>
             </button>
           </div>
+            </>
+          )}
         </nav>
 
         {/* The sash fills the backdrop strip between the sidebar and the
@@ -1314,6 +1337,15 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           className="content-col"
           style={{ left: sidebarOpen ? sidebarWidth + SIDEBAR_GAP : 0 }}
         >
+          {surface === 'settings' ? (
+            <SettingsPane
+              category={settingsCategory}
+              themeChoice={themeChoice}
+              onThemeChoice={onThemeChoice}
+              view={view}
+              patchView={patchView}
+            />
+          ) : (
           <main className={`content${session.messages.length > 0 ? ' in-session' : ''}`}>
           <div className="watermark" aria-hidden="true">
             C
@@ -1583,6 +1615,7 @@ export function Main({ visible, theme, onToggleTheme }: MainProps): ReactElement
           </div>
           </div>
         </main>
+          )}
         </div>
       </div>
 

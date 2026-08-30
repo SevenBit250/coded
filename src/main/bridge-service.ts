@@ -47,6 +47,10 @@ function recomputeStatus(): void {
 function registerBridgeIpc(): void {
   ipcMain.handle(IPC.bridge.statusGet, () => statusValue)
   ipcMain.handle(IPC.bridge.capabilitiesGet, () => client?.capabilities() ?? [])
+  ipcMain.handle(IPC.bridge.backendGet, () => manager?.info() ?? null)
+  ipcMain.handle(IPC.bridge.restart, () => {
+    if (manager !== null) void manager.restart('user requested from settings')
+  })
   ipcMain.handle(IPC.bridge.invoke, (_event, method: string, payload: unknown) => {
     if (client === null) throw new Error('bridge not started')
     return client.call(method, payload).catch((error: unknown) => {

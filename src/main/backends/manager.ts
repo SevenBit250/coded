@@ -49,6 +49,7 @@ export class BackendManager {
   private attempts = 0
   private misses = 0
   private probe: (() => Promise<void>) | null = null
+  private selected: ScannedBackend | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private restartTimer: ReturnType<typeof setTimeout> | null = null
   private stabilityTimer: ReturnType<typeof setTimeout> | null = null
@@ -64,6 +65,12 @@ export class BackendManager {
    * bridge goes down — a dead pipe is the transport layer's detection, the
    * watchdog only judges when the pipe still answers.
    */
+  /** The loaded backend binding's identity (null until a start was attempted). */
+  info(): { id: string; label: string } | null {
+    if (this.selected === null) return null
+    return { id: this.selected.manifest.id, label: this.selected.manifest.label }
+  }
+
   setProbe(probe: (() => Promise<void>) | null): void {
     this.probe = probe
   }
@@ -71,6 +78,7 @@ export class BackendManager {
   /** Load and start the selected backend. Rejects when the FIRST start fails
    *  (the shell surfaces it); later failures go through the restart policy. */
   async start(selected: ScannedBackend): Promise<void> {
+    this.selected = selected
     const binding = selected.create()
     this.binding = binding
     binding.on('status', (status) => this.handleStatus(status))

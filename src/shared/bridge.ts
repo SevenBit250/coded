@@ -34,6 +34,11 @@ export interface BridgeSurface {
    * e.g. 'presets'). Empty while the bridge is down; re-resolved per epoch.
    */
   capabilities: () => Promise<string[]>
+  /** The loaded backend binding's identity (null while none is running). */
+  backend: () => Promise<{ id: string; label: string } | null>
+  /** Ask the backend manager to restart the current binding (fire-and-forget;
+   *  the status broadcast reports the ensuing lifecycle). */
+  restartBackend: () => Promise<void>
   /**
    * Harness ApiProxy unary call. Resolves with the carrier's full-form
    * ServerResponse document ({type:'server-response', rpcId, ok, value|error}).
@@ -66,6 +71,6 @@ export interface CodedDesktop {
   ready: () => void
   /** Renderer signals the startup animation finished -> main view. */
   transition: () => void
-  /** Harness runtime + bridge surface. */
+  /** Loaded backend + bridge surface. */
   bridge: BridgeSurface
 }

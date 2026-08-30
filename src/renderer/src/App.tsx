@@ -3,8 +3,8 @@ import type { ReactElement } from 'react'
 import { ThemeProvider } from '@uibase'
 import { Startup } from './screens/Startup'
 import { Main } from './screens/Main'
-import { THEMES, initialTheme, saveTheme } from './theme'
-import type { ThemeName } from './theme'
+import { THEMES, loadThemeChoice, resolveTheme, saveThemeChoice, systemPrefersDark } from './theme'
+import type { ThemeChoice } from './theme'
 
 /** Startup-sequence phase: the glass, then the workspace. The glass whitens
  *  for a beat before the swap; only the atomically-committed screen change
@@ -54,10 +54,22 @@ const HOLD_ON_STARTUP = false
  */
 export function App(): ReactElement {
   const [phase, setPhase] = useState<ShellPhase>('startup')
-  const [theme, setTheme] = useState<ThemeName>(initialTheme)
+  const [themeChoice, setThemeChoice] = useState<ThemeChoice>(loadThemeChoice)
+  const [systemDark, setSystemDark] = useState(systemPrefersDark)
   const [mainMounted, setMainMounted] = useState(false)
   const [whitening, setWhitening] = useState(false)
   const started = useRef(false)
+
+  // The 'system' choice tracks the OS live.
+  useEffect(() => {
+    if (themeChoice !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (event: MediaQueryListEvent): void => setSystemDark(event.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [themeChoice])
+
+  const theme = resolveTheme(themeChoice, systemDark)
 
   const beginTransition = useCallback(() => {
     if (started.current) return
@@ -93,18 +105,18 @@ export function App(): ReactElement {
   }, [])
 
   useEffect(() => {
-    saveTheme(theme)
-  }, [theme])
-
-  const toggleTheme = useCallback(() => {
-    setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
-  }, [])
+    saveThemeChoice(themeChoice)
+  }, [themeChoice])
 
   return (
     <ThemeProvider tokens={THEMES[theme]} name={theme} scheme={theme}>
       {phase === 'startup' && <Startup whitening={whitening} dark={theme === 'dark'} />}
       {mainMounted && (
-        <Main visible={phase === 'main'} theme={theme} onToggleTheme={toggleTheme} />
+        <Main
+          visible={phase === 'main'}
+          themeChoice={themeChoice}
+          onThemeChoice={setThemeChoice}
+        />
       )}
     </ThemeProvider>
   )

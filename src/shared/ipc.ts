@@ -36,6 +36,10 @@ export const IPC = {
     status: 'bridge:status',
     /** invoke() → adapter hello capabilities of the current bridge epoch. */
     capabilitiesGet: 'bridge:capabilities-get',
+    /** invoke() → the loaded backend binding's identity (null while none). */
+    backendGet: 'bridge:backend-get',
+    /** invoke() → ask the manager to restart the current backend binding. */
+    restart: 'bridge:restart',
   },
 } as const
 

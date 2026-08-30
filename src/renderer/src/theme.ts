@@ -67,14 +67,27 @@ export const THEMES: Record<ThemeName, ThemeTokens> = {
 /** localStorage key for the user's explicit theme choice. */
 const STORAGE_KEY = 'coded-theme'
 
-/** The stored choice, or the OS preference when the user never chose. */
-export function initialTheme(): ThemeName {
+/** What the user picked: the two palettes, or follow the OS. */
+export type ThemeChoice = 'system' | 'light' | 'dark'
+
+/** The persisted choice; 'system' when the user never chose. */
+export function loadThemeChoice(): ThemeChoice {
   const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved === 'light' || saved === 'dark') return saved
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  return saved === 'light' || saved === 'dark' ? saved : 'system'
 }
 
-/** Persist an explicit choice. */
-export function saveTheme(name: ThemeName): void {
-  localStorage.setItem(STORAGE_KEY, name)
+/** Persist the choice. */
+export function saveThemeChoice(choice: ThemeChoice): void {
+  localStorage.setItem(STORAGE_KEY, choice)
+}
+
+/** The OS preference right now. */
+export function systemPrefersDark(): boolean {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
+/** Choice + current OS preference -> the active palette name. */
+export function resolveTheme(choice: ThemeChoice, systemDark: boolean): ThemeName {
+  if (choice === 'system') return systemDark ? 'dark' : 'light'
+  return choice
 }

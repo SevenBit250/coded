@@ -15,12 +15,12 @@ import { connect, type Socket } from 'node:net'
 import { once } from 'node:events'
 import {
   CODED_METHOD_CLASS,
-  defaultPipePath,
   bridgeFrameSchema,
   BRIDGE_PROTOCOL_VERSION,
   STREAM_SUBSCRIBE_METHOD,
   STREAM_UNSUBSCRIBE_METHOD,
 } from '@coded/bridge-protocol'
+import { defaultPipePath } from '@coded/bridge-protocol/node'
 import type { BridgeFrame } from '@coded/bridge-protocol'
 
 export type BridgeStatus = 'connecting' | 'connected' | 'disconnected' | 'stopped'

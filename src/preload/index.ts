@@ -82,6 +82,8 @@ const bridge: CodedDesktop = {
   bridge: {
     status: () => ipcRenderer.invoke(IPC.bridge.statusGet) as Promise<BridgeStatus>,
     capabilities: () => ipcRenderer.invoke(IPC.bridge.capabilitiesGet) as Promise<string[]>,
+    backend: () => ipcRenderer.invoke(IPC.bridge.backendGet) as Promise<{ id: string; label: string } | null>,
+    restartBackend: () => ipcRenderer.invoke(IPC.bridge.restart) as Promise<void>,
     onStatus: (cb) => {
       statusListeners.add(cb)
       return () => {

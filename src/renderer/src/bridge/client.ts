@@ -182,6 +182,16 @@ export const bridge = {
     return window.coded.bridge.capabilities()
   },
 
+  /** Identity of the loaded backend binding (null while none runs). */
+  async backend(): Promise<{ id: string; label: string } | null> {
+    return window.coded.bridge.backend()
+  },
+
+  /** Restart the current backend binding (lifecycle rides the status broadcast). */
+  async restartBackend(): Promise<void> {
+    await window.coded.bridge.restartBackend()
+  },
+
   /** The deployment's agent-preset roster (empty = none composed). */
   async listPresets(): Promise<CodedAgentPreset[]> {
     const value = (await window.coded.bridge.invoke('coded.presets.list', {})) as {
