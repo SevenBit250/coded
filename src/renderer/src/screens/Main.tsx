@@ -544,6 +544,9 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
   const [modeValue, setModeValue] = useState<string | null>(null)
   /** Composer input focus target (the + affordance lands the user here). */
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  /** In-session the composer floats over the transcript; its measured height
+   *  is published as --composer-h so the scroller reserves room for it. */
+  const composerAnchorRef = useRef<HTMLDivElement | null>(null)
   // Rename dialog: which row is being renamed, its draft and any error.
   const [renameTarget, setRenameTarget] = useState<
     { kind: 'workspace'; id: string } | { kind: 'session'; wsId: string; id: string } | null
@@ -600,6 +603,21 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
       directory.workspaces.some((w) => w.sessions.some((s) => s.id === selectedSession && s.running)),
     [directory.workspaces, selectedSession],
   )
+
+  // Publish the composer's measured height as a CSS var on the content
+  // column: the in-session composer floats over the transcript, and the
+  // scroller's bottom padding + jump button offset track it as it grows.
+  useEffect(() => {
+    const anchor = composerAnchorRef.current
+    if (anchor === null) return
+    const publish = (): void => {
+      anchor.parentElement?.style.setProperty('--composer-h', `${anchor.offsetHeight}px`)
+    }
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(anchor)
+    return () => observer.disconnect()
+  }, [])
 
   // Turn timer: wall-clock seconds since the running flag went up; ticks
   // once a second while the turn runs, resets when it ends.
@@ -1450,7 +1468,7 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
 
           {/* Centered in the conversation area: the composer anchors the
               center; the greeting rides a fixed 26px above the card. */}
-          <div className="composer-anchor">
+          <div className="composer-anchor" ref={composerAnchorRef}>
             {session.messages.length === 0 && <h1 className="greeting">{greeting()}</h1>}
 
           <div className="composer">

@@ -79,6 +79,18 @@ body {
    globally so every scrollable pane (sidebar list, dropdown
    panels, transcript) shares the same chrome-free feel.
    ============================================================ */
+/* ============================================================
+   Conversation column contract (in-session):
+   one shared measure for transcript AND composer — side insets
+   of --conv-inset, capped at --conv-max. The scroller centers it
+   via symmetric padding; the composer anchor sizes itself with
+   the same two constants (see .chat-stream / .composer-anchor).
+   ============================================================ */
+:root {
+  --conv-max: 1380px;
+  --conv-inset: 76px;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -704,8 +716,10 @@ html[data-platform='win32'] .anchor-bar {
 
 .chat-jump {
   position: absolute;
-  bottom: 14px;
-  left: 50%;
+  /* Clears the floating composer (same published height var); centers on the
+     conversation column (panel width minus the 6px scrollbar). */
+  bottom: calc(var(--composer-h, 132px) + 24px);
+  left: calc((100% - 6px) / 2);
   transform: translateX(-50%);
   width: 34px;
   height: 34px;
@@ -736,21 +750,47 @@ html[data-platform='win32'] .anchor-bar {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  /* Full-bleed scroller: the bar hugs the panel's right edge. The message
+  /* Full-bleed scroller: the bar hugs the panel's right edge; the message
      column is centered via symmetric padding, not a narrowed box — a width
-     here would pull the scrollbar inward. */
-  padding: 20px max(40px, calc((100% - 760px) / 2)) 12px;
+     here would pull the scrollbar inward. Bottom padding is the composer's
+     measured height (--composer-h, published by Main's ResizeObserver) so
+     the last row can scroll clear above the floating card. The conversation
+     column (one shared width for transcript + composer, like the reference):
+     76px side insets, capped at 1380px. */
+  padding: 20px max(var(--conv-inset), calc((100% - var(--conv-max)) / 2)) calc(var(--composer-h, 132px) + 20px);
 }
 
 .content.in-session .composer-anchor {
-  position: static;
+  /* Out-of-flow overlay: pinned to the panel bottom above the transcript.
+     Resets the home-state centering anchor (top 50% + translate) — without
+     that the box stretches from mid-height and shifts up-left. right: 6px
+     mirrors the classic scrollbar so the containing block matches the
+     scroller's content box and both columns share the exact same insets.
+     The anchor is click-transparent (gutters scroll the transcript); only
+     the card itself takes pointer events. */
+  position: absolute;
+  top: auto;
+  bottom: 0;
+  left: 0;
+  right: 6px;
   transform: none;
-  /* Tracks the message column exactly (same formula as .chat-stream's
-     symmetric padding) so both share one center axis at every width. */
-  width: min(760px, calc(100% - 80px));
+  z-index: 3;
+  width: min(var(--conv-max), calc(100% - 2 * var(--conv-inset)));
   margin: 0 auto;
-  flex: none;
   padding-bottom: 16px;
+  /* Opaque backdrop: without it, transcript text scrolled under the card
+     peeks through the transparent bottom strip. With it, text is visible
+     only above the card's top edge — the reference behavior. */
+  background: var(--bg);
+  pointer-events: none;
+}
+
+.content.in-session .composer {
+  /* Box model: panel (red) > conversation column (blue, the anchor's width)
+     > composer card (purple) — the card fills the column exactly; the base
+     rule's min-width: 90% + centering would let it shrink inside the column. */
+  width: 100%;
+  pointer-events: auto;
 }
 
 /* In-session the composer loses its head row: the workspace + mode info
