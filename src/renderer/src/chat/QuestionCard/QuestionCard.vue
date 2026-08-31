@@ -40,7 +40,8 @@ function submit(): void {
     'submit',
     props.pending.questions.map((q) => ({
       id: q.id,
-      selected: selections[q.id] ?? [],
+      // Spread out of the reactive record: wire answers must be plain.
+      selected: [...(selections[q.id] ?? [])],
       ...((customs[q.id] ?? '').trim() !== '' ? { custom: customs[q.id].trim() } : {}),
     })),
   )

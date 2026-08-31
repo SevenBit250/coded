@@ -260,7 +260,10 @@ export const bridge = {
     return (await window.coded.bridge.invoke('coded.session.respond', {
       sessionId,
       gateId,
-      answer,
+      // Wire payloads must be structured-cloneable: reactive state (Pinia/
+      // component refs) hands out Proxy arrays that IPC refuses ("An object
+      // could not be cloned") — strip reactivity at the boundary.
+      answer: JSON.parse(JSON.stringify(answer)) as GateAnswer,
     })) as { accepted: boolean; reason?: string }
   },
 
