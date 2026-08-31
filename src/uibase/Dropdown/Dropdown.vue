@@ -29,7 +29,7 @@ export interface DropdownOption {
   label: string
   /** Leading glyph drawn left of the label in panel rows, and in the
    *  trigger's head slot when this option is selected (`headSlot='selected'`). */
-  icon?: VNode
+  icon?: () => VNode
   /** Second dim line under the label in panel rows. */
   description?: string
 }
@@ -40,8 +40,9 @@ export interface DropdownAction {
   id: string
   /** Display label. */
   label: string
-  /** Leading glyph, sized by the same wrapper as option icons. */
-  icon?: VNode
+  /** Leading glyph factory (fresh VNode per render), sized by the same
+   *  wrapper as option icons. */
+  icon?: () => VNode
 }
 
 export interface DropdownProps {
@@ -468,7 +469,7 @@ defineSlots<{
       <span class="ui-dd-slot">
         <template v-if="headSlot === 'selected'">
           <span v-if="selected?.icon !== undefined" class="ui-dd-optico">
-            <component :is="selected.icon" />
+            <component :is="selected.icon()" />
           </span>
         </template>
         <template v-else>
@@ -548,7 +549,7 @@ defineSlots<{
             @click="activateRow({ kind: 'option', id: o.id })"
           >
             <span v-if="o.icon !== undefined" class="ui-dd-optico">
-              <component :is="o.icon" />
+              <component :is="o.icon()" />
             </span>
             <!-- lucide:folder (default keeps plain lists recognizable) -->
             <Icon v-else className="ui-dd-ico">
@@ -578,7 +579,7 @@ defineSlots<{
             @click="emit('action', a.id); requestClose(); focusTrigger()"
           >
             <span v-if="a.icon !== undefined" class="ui-dd-optico">
-              <component :is="a.icon" />
+              <component :is="a.icon()" />
             </span>
             <span class="ui-dd-label">{{ a.label }}</span>
           </button>
