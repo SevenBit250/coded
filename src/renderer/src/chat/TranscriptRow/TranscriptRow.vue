@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import './TranscriptRow.css'
 import ToolFold from '../ToolFold/ToolFold.vue'
 import ReasonFold from '../ReasonFold/ReasonFold.vue'
 import MsgActions from '../MsgActions/MsgActions.vue'

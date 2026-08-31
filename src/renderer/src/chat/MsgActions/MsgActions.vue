@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import './MsgActions.css'
 
 /** Hover action row under one message: copy + (timestamp when available). */
 const props = defineProps<{ text: string }>()

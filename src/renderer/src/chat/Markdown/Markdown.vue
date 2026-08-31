@@ -6,6 +6,7 @@ export interface MarkdownProps {
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import './Markdown.css'
 import MarkdownIt from 'markdown-it'
 
 /**
