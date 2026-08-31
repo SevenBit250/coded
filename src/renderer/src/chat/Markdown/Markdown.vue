@@ -22,17 +22,21 @@ import MarkdownIt from 'markdown-it'
  */
 const props = defineProps<MarkdownProps>()
 
-const md = new MarkdownIt({ html: false, linkify: false, breaks: false })
-
-const defaultLinkOpen =
-  md.renderer.rules['link_open'] ??
-  ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
-
-md.renderer.rules['link_open'] = (tokens, idx, options, env, self) => {
-  tokens[idx].attrSet('target', '_blank')
-  tokens[idx].attrSet('rel', 'noopener noreferrer')
-  return defaultLinkOpen(tokens, idx, options, env, self)
-}
+// One shared markdown-it for the whole app: instances are stateless after
+// configuration, and a long transcript otherwise pays N-1 extra copies plus
+// per-instance parser warmup.
+const md = (() => {
+  const instance = new MarkdownIt({ html: false, linkify: false, breaks: false })
+  const defaultLinkOpen =
+    instance.renderer.rules['link_open'] ??
+    ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options))
+  instance.renderer.rules['link_open'] = (tokens, idx, options, env, self) => {
+    tokens[idx].attrSet('target', '_blank')
+    tokens[idx].attrSet('rel', 'noopener noreferrer')
+    return defaultLinkOpen(tokens, idx, options, env, self)
+  }
+  return instance
+})()
 
 const html = computed(() => md.render(props.text))
 </script>

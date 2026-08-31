@@ -123,6 +123,8 @@ export const useSessionStore = defineStore('session', () => {
     busy.value = false
     queue.value = []
     agentPreset.value = undefined
+    // Pending deltas belong to the previous session's transcript.
+    pendingDeltas.clear()
     if (next === null) {
       messages.value = []
       return
@@ -158,7 +160,34 @@ export const useSessionStore = defineStore('session', () => {
     messages.value[at] = { ...target, text: target.text + text }
   }
 
+  // ---- Streaming delta coalescing ----
+  // Deltas arrive one IPC frame each with no renderer-side batching; at
+  // stream pace that re-renders the tail once per frame. Coalesce per
+  // itemRef and flush once per animation frame — one mutation per tick, the
+  // text content identical to frame-by-frame application.
+  const pendingDeltas = new Map<string, string>()
+  let deltaFlushScheduled = false
+
+  function queueDelta(itemRef: string, text: string): void {
+    pendingDeltas.set(itemRef, (pendingDeltas.get(itemRef) ?? '') + text)
+    if (deltaFlushScheduled) return
+    deltaFlushScheduled = true
+    requestAnimationFrame(() => {
+      deltaFlushScheduled = false
+      const batch = new Map(pendingDeltas)
+      pendingDeltas.clear()
+      for (const [ref, text] of batch) appendText(ref, text)
+    })
+  }
+
+  function dropPendingDeltas(itemRef: string): void {
+    pendingDeltas.delete(itemRef)
+  }
+
   function finalizeText(itemRef: string, text: string): void {
+    // The finalize carries the complete accumulated text — any un-flushed
+    // deltas for this ref are superseded, drop them instead of applying.
+    dropPendingDeltas(itemRef)
     const at = messages.value.findIndex((m) => m.id === itemRef)
     if (at < 0) {
       // Never announced (missed deltas): surface the block whole.
@@ -194,7 +223,7 @@ export const useSessionStore = defineStore('session', () => {
       }
       case 'transcript.delta': {
         if (event.sessionId !== sessionIdRef.value) return
-        appendText(event.itemRef, event.text)
+        queueDelta(event.itemRef, event.text)
         return
       }
       case 'transcript.finalized': {
