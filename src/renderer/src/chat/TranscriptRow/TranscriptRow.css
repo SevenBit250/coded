@@ -1,56 +1,13 @@
+/* TranscriptRow — the kind dispatcher's own chrome: the shared row base and
+   the hover reveal of child message actions. Per-kind styles live in each
+   component's colocated CSS (UserBubble/AssistantBlock/styles/fold.css). */
+
 .chat-row {
   display: flex;
   flex-direction: column;
-}
-
-.chat-row--user {
-  align-items: flex-end;
-}
-
-.chat-row--assistant {
-  align-items: flex-start;
-}
-
-.chat-bubble {
-  max-width: 82%;
-  padding: 9px 13px;
-  border-radius: 14px;
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.chat-bubble--user {
-  background: var(--accent, #e8734a);
-  color: #ffffff;
-  border-bottom-right-radius: 5px;
-}
-
-/* Assistant content: plain text flow (reference style — no card), full
-   column width; the streaming caret rides the block itself. */
-.chat-assistant {
-  width: 100%;
-  font-size: 13.5px;
-  line-height: 1.7;
-  color: var(--text, #26272d);
-  word-break: break-word;
-}
-
-.chat-assistant--streaming::after {
-  content: '▍';
-  opacity: 0.5;
-  animation: chat-cursor 0.9s steps(1) infinite;
-}
-
-@keyframes chat-cursor {
-  50% {
-    opacity: 0;
-  }
 }
 
 /* Hover actions under a message (copy). In-flow but quiet. */
 .chat-row:hover .msg-actions {
   opacity: 1;
 }
-.chat-error { color: var(--danger, #e34d59); font-size: 12px; }

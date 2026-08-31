@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import '../styles/fold.css'
-import './TurnGroup.css'
 import TranscriptRow from '../TranscriptRow/TranscriptRow.vue'
 import type { ChatMessage } from '../../bridge/session-store'
+import '../styles/fold.css'
+import './WorkCard.css'
 
-/** One turn's fold: a quiet header ("工作中 N 秒" / "已工作 N 秒 ˅") over the
- *  turn's step rows. Open while the turn runs; collapsed once it ends (the
- *  answer text rows stay visible), click toggles. */
+/** WorkCard — one AI turn's fold (was TurnGroup): a quiet header ("工作中 N
+ *  秒" while the turn runs, "已工作 N 秒 ˅" after) over the turn's step rows
+ *  (reasoning/tool/skill folds + answer text). Open while running; collapsed
+ *  once it ends (answer text rows stay visible), click toggles. One work card
+ *  = one virtual item in the transcript list. */
 const props = defineProps<{
   running: boolean
   elapsedSec?: number | null

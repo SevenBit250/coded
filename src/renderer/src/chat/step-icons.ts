@@ -67,11 +67,7 @@ export function toolCategory(
   const name = title.toLowerCase()
   if (['pwsh', 'powershell', 'bash', 'sh', 'cmd', 'zsh'].includes(name))
     return { label: '终端', icon: 'terminal', summary: clip(firstString(args, ['command', 'cmd', 'script'])) }
-  if (name === 'skill') {
-    const id = firstString(args, ['skill', 'name'])
-    const desc = firstString(args, ['description'])
-    return { label: '技能', icon: 'skill', summary: clip([id, desc].filter(Boolean).join('  ') || undefined) }
-  }
+  // 'skill' never reaches here — TranscriptRow routes it to SkillFold.
   if (['write', 'edit', 'multiedit', 'notebookedit'].includes(name))
     return { label: '写入', icon: 'write', summary: clip(firstString(args, ['path', 'file_path', 'notebook_path'])) }
   if (name === 'read')

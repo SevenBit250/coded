@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import './ChatStream.css'
 import TranscriptRow from '../TranscriptRow/TranscriptRow.vue'
-import TurnGroup from '../TurnGroup/TurnGroup.vue'
+import WorkCard from '../WorkCard/WorkCard.vue'
 import ApprovalCard from '../ApprovalCard/ApprovalCard.vue'
 import QuestionCard from '../QuestionCard/QuestionCard.vue'
 import type { PendingApproval, PendingQuestion, ChatMessage } from '../../bridge/session-store'
@@ -114,7 +114,7 @@ const segments = computed<Segment[]>(() => {
           v-if="segment.items.length === 1 && segment.items[0]?.kind === 'user'"
           :message="segment.items[0]"
         />
-        <TurnGroup
+        <WorkCard
           v-else
           :running="segment.running"
           :elapsed-sec="segment.elapsedSec"

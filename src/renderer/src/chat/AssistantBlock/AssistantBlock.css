@@ -1,0 +1,32 @@
+/* AssistantBlock — answer text flow + send-error state. */
+
+.chat-row--assistant {
+  align-items: flex-start;
+}
+
+.chat-error {
+  color: var(--danger, #e34d59);
+  font-size: 12px;
+}
+
+/* Answer text: plain text flow (reference style — no card), full column
+   width; the streaming caret rides the block itself. */
+.chat-assistant {
+  width: 100%;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text, #26272d);
+  word-break: break-word;
+}
+
+.chat-assistant--streaming::after {
+  content: '▍';
+  opacity: 0.5;
+  animation: chat-cursor 0.9s steps(1) infinite;
+}
+
+@keyframes chat-cursor {
+  50% {
+    opacity: 0;
+  }
+}
