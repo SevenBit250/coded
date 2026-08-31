@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import TranscriptRow from './TranscriptRow.vue'
-import TurnGroup from './TurnGroup.vue'
-import ApprovalCard from './ApprovalCard.vue'
-import QuestionCard from './QuestionCard.vue'
-import type { PendingApproval, PendingQuestion, ChatMessage } from './session-store'
+import './ChatStream.css'
+import TranscriptRow from '../TranscriptRow/TranscriptRow.vue'
+import TurnGroup from '../TurnGroup/TurnGroup.vue'
+import ApprovalCard from '../ApprovalCard/ApprovalCard.vue'
+import QuestionCard from '../QuestionCard/QuestionCard.vue'
+import type { PendingApproval, PendingQuestion, ChatMessage } from '../../bridge/session-store'
 
 /**
  * ChatStream — the transcript view over semantic transcript items (§2.3):

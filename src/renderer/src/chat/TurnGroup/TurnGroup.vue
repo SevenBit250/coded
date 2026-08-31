@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import TranscriptRow from './TranscriptRow.vue'
-import type { ChatMessage } from './session-store'
+import '../styles/fold.css'
+import './TurnGroup.css'
+import TranscriptRow from '../TranscriptRow/TranscriptRow.vue'
+import type { ChatMessage } from '../../bridge/session-store'
 
 /** One turn's fold: a quiet header ("工作中 N 秒" / "已工作 N 秒 ˅") over the
  *  turn's step rows. Open while the turn runs; collapsed once it ends (the

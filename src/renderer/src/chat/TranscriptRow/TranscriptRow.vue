@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import ToolFold from './ToolFold.vue'
-import ReasonFold from './ReasonFold.vue'
-import MsgActions from './MsgActions.vue'
-import Markdown from './Markdown.vue'
-import type { ChatMessage } from './session-store'
+import ToolFold from '../ToolFold/ToolFold.vue'
+import ReasonFold from '../ReasonFold/ReasonFold.vue'
+import MsgActions from '../MsgActions/MsgActions.vue'
+import Markdown from '../Markdown/Markdown.vue'
+import type { ChatMessage } from '../../bridge/session-store'
 
 /** One transcript row, any kind. */
 const props = defineProps<{ message: ChatMessage; tick?: number | null }>()

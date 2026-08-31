@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import StepIcon from './StepIcon.vue'
-import { toolCategory } from './step-icons'
-import type { ChatMessage } from './session-store'
+import '../styles/fold.css'
+import StepIcon from '../StepIcon/StepIcon.vue'
+import { toolCategory } from '../step-icons'
+import type { ChatMessage } from '../../bridge/session-store'
 
 /** One collapsible tool-call row: icon + category label + summary; the raw
  *  args/result stay behind the fold. */

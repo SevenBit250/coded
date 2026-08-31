@@ -1,0 +1,149 @@
+/* Fold family shared by ToolFold / ReasonFold / TurnGroup: quiet
+   single-line rows (icon + label + summary + chevron) and the open
+   body behind a left rule. Extracted verbatim from styles.css. */
+/* ---- Tool-call blocks in the transcript. ---- */
+
+/* Fold family (tool calls + reasoning): quiet single-line rows INSIDE the
+   message flow — icon + category label + summary + chevron; open content
+   sits behind a left rule with its own scroll. No card boxes. */
+.tool-card,
+.reasoning-card {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-dim, #8a8f99);
+}
+
+.step-ico {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--muted, #8a8f99);
+}
+
+.tool-card--running .step-ico,
+.reasoning-card--streaming .step-ico,
+.tool-card--running .tool-label,
+.reasoning-card--streaming .tool-label {
+  color: var(--accent, #e8734a);
+}
+
+.tool-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  /* Shared left axis with .turn-head (4px): group head, step rows and open
+     bodies all read as one column (reference alignment). */
+  padding: 6px 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.tool-label {
+  flex: none;
+  font-weight: 550;
+}
+
+.tool-sum {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted, #8a8f99);
+  /* The summary takes the slack; only the chevron pushes right. */
+  margin-right: auto;
+}
+
+.think-snippet {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint, #aab0bb);
+  margin-right: auto;
+}
+
+.tool-meta {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted, #8a8f99);
+  /* Meta sits beside the label (reference look); only the chevron pushes right. */
+  margin-right: auto;
+}
+
+.tool-chev {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted, #8a8f99);
+}
+
+/* Fold chevron icon: points right closed, rotates to down when open. */
+.fold-chev {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--muted, #8a8f99);
+  transition: transform 0.15s ease;
+}
+
+.fold-chev--open {
+  transform: rotate(90deg);
+}
+
+/* Child fold rows keep their chevron out of sight until it matters: hidden
+   while collapsed, revealed on row hover or once expanded. The top-level
+   turn header (outside .tool-head) is always visible. */
+.tool-head .fold-chev {
+  opacity: 0;
+}
+
+.tool-head:hover .fold-chev,
+.tool-head[aria-expanded='true'] .fold-chev {
+  opacity: 1;
+}
+
+.tool-body {
+  /* Rule centered on the head icon: icon spans 4..18px (padding 4 + 14px
+     wide), center 11px — a 1px rule at margin 10.5px sits exactly on it.
+     Text keeps the label axis (26px = 4 + icon 14 + gap 8 → padding 15.5). */
+  margin: 2px 10px 8px 10.5px;
+  padding: 0 14px 8px 14.5px;
+  border-left: 1px solid var(--hairline, rgba(128, 128, 128, 0.2));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* Reasoning ("thinking") block — same fold family, dimmer text. */
+.reasoning-card {
+  color: var(--muted, #8a8f99);
+}
+
+.reasoning-text {
+  color: var(--muted, #8a8f99);
+  max-height: 260px;
+}

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, reactive } from 'vue'
-import type { PendingQuestion, QuestionAnswerItem } from './session-store'
+import '../styles/gate.css'
+import './QuestionCard.css'
+import type { PendingQuestion, QuestionAnswerItem } from '../../bridge/session-store'
 
 /** Question form: one block per question, options single/multi + custom. */
 const props = defineProps<{

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h } from 'vue'
-import { LUCIDE } from './step-icons'
-import type { StepIconKind } from './step-icons'
+import { LUCIDE } from '../step-icons'
+import type { StepIconKind } from '../step-icons'
 
 const props = defineProps<{ kind: StepIconKind }>()
 

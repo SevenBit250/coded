@@ -1,0 +1,56 @@
+/* Turn group: one quiet header per turn over its step rows (reasoning +
+   tool folds). Running = live "工作中 N 秒"; ended = "已工作 N 秒" with a
+   collapse chevron, collapsed by default (answer text rows stay visible). */
+.turn-group {
+  display: flex;
+  flex-direction: column;
+  /* Head sits closer to its own steps than to the message above: the
+     reference reads the header as belonging to the block below it. */
+  gap: 6px;
+}
+
+.turn-head {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.turn-head:hover {
+  color: var(--text-dim);
+}
+
+.turn-head--running,
+.turn-head--running:hover {
+  color: var(--text-faint);
+  cursor: default;
+  background: transparent;
+}
+
+.turn-head-label--running {
+  color: var(--accent);
+}
+
+/* The turn header doubles as a section divider: a hairline runs the full
+   conversation column under it (reference look). */
+.turn-group::after {
+  content: '';
+  order: 1;
+  height: 1px;
+  background: var(--hairline);
+  width: 100%;
+}
+
+.turn-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  order: 2;
+}

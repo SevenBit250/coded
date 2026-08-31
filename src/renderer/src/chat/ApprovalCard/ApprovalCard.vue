@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { PendingApproval } from './session-store'
+import type { PendingApproval } from '../../bridge/session-store'
+import '../styles/gate.css'
 
 /** Tool-approval card: what is about to run, then allow-once / reject. */
 defineProps<{

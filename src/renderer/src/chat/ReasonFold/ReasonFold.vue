@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import StepIcon from './StepIcon.vue'
-import type { ChatMessage } from './session-store'
+import '../styles/fold.css'
+import StepIcon from '../StepIcon/StepIcon.vue'
+import type { ChatMessage } from '../../bridge/session-store'
 
 /** One collapsible reasoning row. Default COLLAPSED in every state: while
  *  streaming the head shows "正在思考 · 〈live tail of the text〉", once done

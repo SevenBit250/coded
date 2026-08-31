@@ -19,7 +19,7 @@ import {
 import type { DropdownAction, DropdownOption } from '@uibase'
 import { useDirectoryStore } from '../bridge/directory-store'
 import { useSessionStore } from '../bridge/session-store'
-import ChatStream from '../bridge/ChatStream.vue'
+import ChatStream from '../chat/ChatStream/ChatStream.vue'
 import SettingsNav from './SettingsNav.vue'
 import type { SettingsCategory } from './SettingsNav.vue'
 import SettingsPane from './SettingsPane.vue'
