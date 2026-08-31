@@ -14,16 +14,38 @@ const props = defineProps<{
   running: boolean
   elapsedSec?: number | null
   doneMs?: number | null
+  /** Wall clock of the user message that started this turn — the restored-
+   *  duration lower bound (matches the live clock's send→done semantics). */
+  startedAt?: number | null
   items: ChatMessage[]
 }>()
 
 const expanded = ref(false)
 const open = computed(() => props.running || expanded.value)
 
+/** Restored duration: the wire stamps items with the host log's wall clock
+ *  (epoch ms); a turn's span runs from its user message (or earliest stamp)
+ *  to its last stamp (tool endTime = the paired result). Reasoning and its
+ *  answer share one log event's clock, so the user-message anchor is what
+ *  keeps single-step turns measurable. Needs two stamps either way. */
+const restoredMs = computed<number | null>(() => {
+  if (props.running) return null
+  const stamps: number[] = []
+  if (typeof props.startedAt === 'number') stamps.push(props.startedAt)
+  for (const m of props.items) {
+    if (typeof m.time === 'number') stamps.push(m.time)
+    if (m.kind === 'tool' && typeof m.endTime === 'number') stamps.push(m.endTime)
+  }
+  if (stamps.length < 2) return null
+  return Math.max(0, Math.max(...stamps) - Math.min(...stamps))
+})
+
+const done = computed<number | null>(() => props.doneMs ?? restoredMs.value)
+
 const label = computed(() => {
   if (props.running) return `工作中 ${props.elapsedSec ?? 0} 秒`
-  if (props.doneMs != null) {
-    const s = Math.max(1, Math.round(props.doneMs / 1000))
+  if (done.value != null) {
+    const s = Math.max(1, Math.round(done.value / 1000))
     return s < 60 ? `已工作 ${s} 秒` : `已工作 ${Math.floor(s / 60)} 分 ${s % 60} 秒`
   }
   return '已工作'

@@ -306,6 +306,22 @@ const activeApprovals = computed(() =>
   session.pendingApprovals.filter((p) => p.sessionId === selectedSession.value),
 )
 
+/** Cumulative working time of the selected session, from the host's
+    sessionStats projection (llmMs + toolMs; survives restarts). */
+const cumulativeLabel = computed<string | null>(() => {
+  const sid = selectedSession.value
+  const s = sid === null ? undefined : session.statsBySession[sid]
+  if (s === undefined || s.turns === 0) return null
+  const totalSec = Math.round((s.llmMs + s.toolMs) / 1000)
+  if (totalSec <= 0) return null
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const sec = totalSec % 60
+  if (h > 0) return `${h} 小时 ${m} 分`
+  if (m > 0) return `${m} 分 ${sec} 秒`
+  return `${sec} 秒`
+})
+
 /** Directory → sidebar row shape (recency bucket computed per recompute). */
 const workspaces = computed<WorkspaceStub[]>(() =>
   directory.workspaces.map((w) => ({
@@ -1150,6 +1166,14 @@ watch(surface, () => {
                 <path d="M22 10.1V21a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-10.9" />
               </Icon>
               {{ sessionMode }}
+            </span>
+            <span v-if="cumulativeLabel !== null" class="title-chip" title="本会话累计工作时长">
+              <Icon viewBox="0 0 24 24" :stroke-width="1.8">
+                <!-- lucide:clock -->
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 6v6l4 2" />
+              </Icon>
+              累计工作 {{ cumulativeLabel }}
             </span>
           </div>
           <div v-if="session.messages.length === 0" class="watermark" aria-hidden="true">C</div>

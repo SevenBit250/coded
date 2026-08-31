@@ -6,19 +6,20 @@
  * strict session gating, append-ignores-known upserts, lazy-create with
  * workspace anchoring — is unchanged; only the container moved.
  */
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { bridge } from './client'
 import type {
   BridgeStatus,
   CodedSemanticEvent,
+  CodedSessionStats,
   CodedTranscriptItem,
   QuestionItem,
   QuestionAnswerItem,
 } from './client'
 
 /** Wire-type re-exports for component consumers (parity with the hook). */
-export type { QuestionItem, QuestionAnswerItem, CodedTranscriptItem, BridgeStatus }
+export type { QuestionItem, QuestionAnswerItem, CodedTranscriptItem, CodedSessionStats, BridgeStatus }
 
 export type ChatMessage = CodedTranscriptItem & {
   error?: string
@@ -94,6 +95,9 @@ export const useSessionStore = defineStore('session', () => {
   const pendingQuestions = ref<PendingQuestion[]>([])
   /** Log-resolved preset of the active session (from its history page). */
   const agentPreset = ref<string | undefined>(undefined)
+  /** Whole-session stats per session id (host sessionStats projection):
+   *  cumulative working time that survives restarts. */
+  const statsBySession = ref<Record<string, CodedSessionStats>>({})
 
   const sessionIdRef = ref<string | null>(null)
   /** Sessions this client created itself — their transcript is already
@@ -135,11 +139,35 @@ export const useSessionStore = defineStore('session', () => {
       .then((page) => {
         messages.value = page.items.map((item) => ({ ...item }))
         agentPreset.value = page.agentPreset
+        if (page.stats !== undefined) {
+          statsBySession.value = { ...statsBySession.value, [next]: page.stats }
+        }
       })
       .catch((error: unknown) => {
         console.log(`[session] history load failed: ${String(error)}`)
       })
   }
+
+  /** Cheap stats refresh: a 1-message history still carries the projections
+   *  block (tail pages always do). Best-effort — stats are decorative. */
+  async function refreshStats(): Promise<void> {
+    const sid = sessionIdRef.value
+    if (sid === null) return
+    try {
+      const page = await bridge.sessionHistory(sid, 1)
+      if (page.stats !== undefined && sid === sessionIdRef.value) {
+        statsBySession.value = { ...statsBySession.value, [sid]: page.stats }
+      }
+    } catch {
+      // The backend may lack the projection or be mid-restart; keep the old value.
+    }
+  }
+
+  // The cumulative working time only changes when a turn ends — re-read the
+  // projections block then (the running turn's clock is the live header).
+  watch(busy, (now, was) => {
+    if (was === true && now === false) void refreshStats()
+  })
 
   /** Upsert one transcript item by id (append ignores known ids so replayed
    *  appends never reset accumulated deltas). */
@@ -243,6 +271,8 @@ export const useSessionStore = defineStore('session', () => {
           ...(event.patch.card !== undefined ? { card: event.patch.card } : {}),
           ...(event.patch.resultText !== undefined ? { resultText: event.patch.resultText } : {}),
           ...(event.patch.resultMeta !== undefined ? { resultMeta: event.patch.resultMeta } : {}),
+          ...(event.patch.time !== undefined ? { time: event.patch.time } : {}),
+          ...(event.patch.endTime !== undefined ? { endTime: event.patch.endTime } : {}),
           status: event.patch.status ?? 'done',
         }
         return
@@ -454,6 +484,8 @@ export const useSessionStore = defineStore('session', () => {
     pendingApprovals,
     pendingQuestions,
     agentPreset,
+    statsBySession,
+    refreshStats,
     configure,
     select,
     send,

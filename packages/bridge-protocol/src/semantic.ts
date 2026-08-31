@@ -119,11 +119,14 @@ export type CodedContentPart =
     }
 
 /** One transcript entry (user-visible, ordered). Ids are stable across
- *  history reads and the live stream — safe as React keys and dedupe anchors. */
+ *  history reads and the live stream — safe as React keys and dedupe anchors.
+ *  `time` is the host log event's wall clock (Unix epoch ms); `endTime` on
+ *  tool items is the paired tool/result's clock — together they let a shell
+ *  rebuild per-turn working durations after a restart. */
 export type CodedTranscriptItem =
-  | { id: string; kind: 'user'; content: CodedContentPart[] }
-  | { id: string; kind: 'assistant'; text: string; streaming?: boolean }
-  | { id: string; kind: 'reasoning'; text: string; streaming?: boolean }
+  | { id: string; kind: 'user'; content: CodedContentPart[]; time?: number }
+  | { id: string; kind: 'assistant'; text: string; streaming?: boolean; time?: number }
+  | { id: string; kind: 'reasoning'; text: string; streaming?: boolean; time?: number }
   | {
       id: string
       kind: 'tool'
@@ -134,7 +137,31 @@ export type CodedTranscriptItem =
       argsText?: string
       resultText?: string
       resultMeta?: string
+      time?: number
+      endTime?: number
     }
+
+/** Whole-session conversation figures, folded host-side from the complete
+ *  durable log (the dsh `sessionStats` projection). Survives restarts and
+ *  is independent of how much history a client has paged in. */
+export interface CodedSessionStats {
+  /** Turns carrying at least one closed step. */
+  turns: number
+  /** Closed steps (completed, failed, and cancelled alike). */
+  steps: number
+  /** Summed model wall time (step/start → assistant/message), ms. */
+  llmMs: number
+  /** Summed tool wall time (tool/call → tool/result pairs), ms. */
+  toolMs: number
+  /** Summed first-token latency, ms. */
+  ttftMs: number
+  /** Steps carrying a recorded first token. */
+  ttftSteps: number
+  /** Summed decode wall time, ms. */
+  decodeMs: number
+  /** Summed provider output tokens. */
+  decodeTokens: number
+}
 
 /** `coded.session.history` response. */
 export interface CodedHistoryPage {
@@ -147,6 +174,12 @@ export interface CodedHistoryPage {
    * that switched preset while blank.
    */
   agentPreset?: string
+  /**
+   * Whole-session stats from the host's projection block (tail pages only —
+   * a `maxMessages`-clamped read still receives them). Absent when the
+   * adapter's host lacks the stats capability.
+   */
+  stats?: CodedSessionStats
 }
 
 /** Discriminator: every semantic event carries its type + sessionId. */
@@ -180,7 +213,7 @@ export type CodedSemanticEvent = CodedSemanticEventBase &
         type: 'toolCall.updated'
         sessionId: string
         callId: string
-        patch: Partial<Pick<CodedTranscriptItem & { kind: 'tool' }, 'status' | 'title' | 'card' | 'resultText' | 'resultMeta'>>
+        patch: Partial<Pick<CodedTranscriptItem & { kind: 'tool' }, 'status' | 'title' | 'card' | 'resultText' | 'resultMeta' | 'time' | 'endTime'>>
       }
     | { type: 'approval.requested'; gateId: string; sessionId: string; approvalId: string; toolName: string; callId?: string; reason?: string }
     | { type: 'approval.resolved'; gateId: string; sessionId: string; approvalId: string }

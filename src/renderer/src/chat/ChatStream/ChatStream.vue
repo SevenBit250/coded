@@ -47,6 +47,9 @@ interface WorkSegment {
   running: boolean
   elapsedSec: number | null
   doneMs: number | null
+  /** Wall clock of the user message that started this turn (restored-
+   *  duration anchor; same send→done semantics as the live clock). */
+  startedAt: number | null
   items: ChatMessage[]
 }
 interface UserSegment {
@@ -60,14 +63,24 @@ const segments = computed<ChatListItem[]>(() => {
   const out: ChatListItem[] = []
   let group: ChatMessage[] = []
   let groupStart = 0
+  let turnStart: number | null = null
   props.messages.forEach((message, index) => {
     if (message.kind === 'user') {
       if (group.length > 0) {
-        out.push({ type: 'turn', key: `turn-${groupStart}`, running: false, elapsedSec: null, doneMs: null, items: group })
+        out.push({
+          type: 'turn',
+          key: `turn-${groupStart}`,
+          running: false,
+          elapsedSec: null,
+          doneMs: null,
+          startedAt: turnStart,
+          items: group,
+        })
       }
       group = []
       out.push({ type: 'user', key: `user-${message.id}`, message })
       groupStart = index + 1
+      turnStart = typeof message.time === 'number' ? message.time : null
       return
     }
     if (group.length === 0) groupStart = index
@@ -81,6 +94,7 @@ const segments = computed<ChatListItem[]>(() => {
       running,
       elapsedSec: running ? (props.runningSec ?? null) : null,
       doneMs: running ? null : props.lastTurnMs,
+      startedAt: turnStart,
       items: group,
     })
   }
@@ -166,6 +180,7 @@ watch(tailTextLength, () => {
             :running="(segmentAt(virtualRow.index) as WorkSegment).running"
             :elapsed-sec="(segmentAt(virtualRow.index) as WorkSegment).elapsedSec"
             :done-ms="(segmentAt(virtualRow.index) as WorkSegment).doneMs"
+            :started-at="(segmentAt(virtualRow.index) as WorkSegment).startedAt"
             :items="(segmentAt(virtualRow.index) as WorkSegment).items"
           />
         </div>

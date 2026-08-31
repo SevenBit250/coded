@@ -20,6 +20,7 @@ import type {
   CodedPermissionModes,
   CodedSemanticEvent,
   CodedSession,
+  CodedSessionStats,
   CodedTranscriptItem,
   CodedWorkspace,
 } from '@coded/bridge-protocol'
@@ -32,6 +33,7 @@ export type {
   CodedHistoryPage,
   CodedSemanticEvent,
   CodedSession,
+  CodedSessionStats,
   CodedTranscriptItem,
   CodedWorkspace,
 } from '@coded/bridge-protocol'
@@ -107,9 +109,14 @@ export const bridge = {
     return value.sessions
   },
 
-  /** Tail page of a session's transcript, as semantic items. */
-  async sessionHistory(sessionId: string): Promise<CodedHistoryPage> {
-    return (await window.coded.bridge.invoke('coded.session.history', { sessionId })) as CodedHistoryPage
+  /** Tail page of a session's transcript, as semantic items. `maxMessages`
+   *  clamps the page for cheap stats-only refreshes (the projections block
+   *  rides every tail page, however short). */
+  async sessionHistory(sessionId: string, maxMessages?: number): Promise<CodedHistoryPage> {
+    return (await window.coded.bridge.invoke('coded.session.history', {
+      sessionId,
+      ...(maxMessages === undefined ? {} : { maxMessages }),
+    })) as CodedHistoryPage
   },
 
   async renameSession(sessionId: string, title: string): Promise<void> {
