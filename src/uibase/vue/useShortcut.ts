@@ -13,7 +13,7 @@ import { registerShortcut } from '../Meta/shortcuts'
 export function useShortcut(
   shortcut: string | undefined | Ref<string | undefined> | (() => string | undefined),
   handler: () => void,
-  opts?: { enabled?: boolean | Ref<boolean> },
+  opts?: { enabled?: boolean | Ref<boolean> | (() => boolean) },
 ): void {
   const handlerRef = { current: handler }
   watchEffect((onCleanup) => {
@@ -26,9 +26,11 @@ export function useShortcut(
     const enabled =
       opts?.enabled === undefined
         ? true
-        : typeof opts.enabled === 'object'
-          ? opts.enabled.value
-          : opts.enabled
+        : typeof opts.enabled === 'function'
+          ? opts.enabled()
+          : typeof opts.enabled === 'object'
+            ? opts.enabled.value
+            : opts.enabled
     if (value === undefined || !enabled) return
     onCleanup(registerShortcut(value, () => handlerRef.current()))
   })
