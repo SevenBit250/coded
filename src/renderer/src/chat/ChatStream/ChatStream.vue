@@ -191,7 +191,7 @@ watch(tailTextLength, () => {
       type="button"
       class="chat-jump"
       aria-label="滚动到底部"
-      @click="rowVirtualizer.scrollToEnd()"
+      @click="rowVirtualizer.scrollToEnd({ behavior: 'smooth' })"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
