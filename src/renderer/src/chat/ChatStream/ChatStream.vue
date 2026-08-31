@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
-import { VList } from 'virtua/vue'
-import type { VListHandle } from 'virtua/vue'
+import { computed, ref, watch } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import './ChatStream.css'
 import UserBubble from '../UserBubble/UserBubble.vue'
 import WorkCard from '../WorkCard/WorkCard.vue'
@@ -11,14 +10,22 @@ import type { PendingApproval, PendingQuestion, ChatMessage } from '../../bridge
 
 /**
  * ChatStream — the transcript view over semantic transcript items (§2.3),
- * window-rendered by virtua's VList. Virtual items are SEGMENTS: a user
- * bubble, a work card (one AI turn: header + step folds + answer text), or
- * a tail gate card. Behaviors preserved against the non-virtual scroller:
- * the conversation-column padding contract lives on the VList container,
- * bottom padding clears the floating composer (--composer-h), stick-to-
- * bottom follows the tail only while the user is at the bottom (no program
- * scrolling after they scroll up), and the "回到底部" pill appears 240px+
- * from the bottom.
+ * window-rendered by @tanstack/vue-virtual (headless: we render the scroll
+ * container, the total-size spacer, and absolutely-positioned segments).
+ * Virtual items are SEGMENTS: a user bubble, a work card (one AI turn:
+ * header + step folds + answer text), or a tail gate card.
+ *
+ * Chat-mode behaviors, native to the virtualizer:
+ *  - anchorTo 'end' + followOnAppend 'auto' — stick to the bottom while the
+ *    user is at the bottom (new segments), stop following the moment they
+ *    scroll up;
+ *  - gap / paddingStart / paddingEnd — spacing and --composer-h clearance
+ *    reserved INSIDE the virtualizer's size math;
+ *  - measureElement — dynamic heights (markdown, fold expansion) with
+ *    scroll-position correction on size change (the "推挤" fix);
+ *  - getDistanceFromEnd — the "回到底部" pill threshold.
+ * The conversation-column horizontal padding contract stays as CSS on the
+ * container (the scrollbar hugs the panel edge).
  */
 const props = withDefaults(
   defineProps<{
@@ -42,32 +49,7 @@ const emit = defineEmits<{
   cancelQuestion: [pending: PendingQuestion]
 }>()
 
-const listRef = ref<VListHandle>()
-const jumpVisible = ref(false)
-/** Stick-to-bottom gate: once the user scrolls up, stop following. */
-const atBottom = ref(true)
-
-function onScroll(): void {
-  const handle = listRef.value
-  if (handle === undefined) return
-  const fromBottom = handle.scrollSize - handle.scrollOffset - handle.viewportSize
-  jumpVisible.value = fromBottom > 240
-  atBottom.value = fromBottom < 80
-}
-
-function jumpToBottom(): void {
-  const handle = listRef.value
-  if (handle === undefined) return
-  handle.scrollTo(handle.scrollSize)
-}
-
-/** Snap to the bottom without animation — the streaming跟随 primitive. */
-function stickToBottom(): void {
-  if (!atBottom.value) return
-  const handle = listRef.value
-  if (handle === undefined) return
-  handle.scrollTo(handle.scrollSize)
-}
+const scrollEl = ref<HTMLElement | null>(null)
 
 // Segment into turn groups: everything after a user message belongs to that
 // message's turn. The last group carries the live clock / finished duration.
@@ -134,15 +116,42 @@ const segments = computed<ChatListItem[]>(() => {
   return out
 })
 
-// Follow the tail while the user is at the bottom: on new segments and on
-// the running block's text growth (deltas are rAF-coalesced in the store,
-// so this fires once per frame at most).
-watch(
-  () => segments.value.length,
-  () => {
-    void nextTick(stickToBottom)
-  },
+/** Rough size hints keep initial offsets sane; real heights take over via
+ *  measureElement. */
+function estimateSize(index: number): number {
+  const segment = segments.value[index]
+  if (segment === undefined) return 120
+  if (segment.type === 'user') return 60
+  if (segment.type !== 'turn') return 180
+  return Math.min(1200, 120 + segment.items.length * 90)
+}
+
+// Template-ref adapter for the virtualizer's dynamic measurement.
+const measureElement = (node: unknown): void => {
+  if (node instanceof HTMLDivElement) rowVirtualizer.value?.measureElement(node)
+}
+
+function segmentAt(index: number): ChatListItem | undefined {
+  return segments.value[index]
+}
+
+const rowVirtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>(
+  computed(() => ({
+    count: segments.value.length,
+    getScrollElement: () => scrollEl.value as HTMLDivElement,
+    estimateSize,
+    getItemKey: (index: number) => segments.value[index]?.key ?? String(index),
+    overscan: 10,
+    gap: 14,
+    anchorTo: 'end' as const,
+    followOnAppend: 'auto' as const,
+    scrollEndThreshold: 240,
+  })),
 )
+
+// Follow the tail while streaming: the running block GROWS in place (not an
+// append), which followOnAppend does not cover — re-pin when the user is at
+// the end.
 const tailTextLength = computed(() => {
   const last = props.messages[props.messages.length - 1]
   if (last === undefined) return 0
@@ -150,56 +159,64 @@ const tailTextLength = computed(() => {
   return 0
 })
 watch(tailTextLength, () => {
-  void nextTick(stickToBottom)
+  const virtualizer = rowVirtualizer.value
+  if (virtualizer === undefined) return
+  if (virtualizer.getDistanceFromEnd() < 80) virtualizer.scrollToEnd()
 })
-watch(
-  () => props.trailTick,
-  () => {
-    void nextTick(stickToBottom)
-  },
-)
 </script>
 
 <template>
   <div class="chat-stream-wrap">
-    <VList
-      ref="listRef"
-      class="chat-stream"
-      :data="segments"
-      :buffer-size="600"
-      aria-label="会话消息"
-      @scroll="onScroll"
-    >
-      <template #default="{ item }">
-        <div class="chat-item">
-          <UserBubble v-if="item.type === 'user'" :message="item.message" />
+    <div ref="scrollEl" class="chat-stream" aria-label="会话消息">
+      <div
+        :style="{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+          position: 'relative',
+          width: '100%',
+        }"
+      >
+        <div
+          v-for="virtualRow in rowVirtualizer.getVirtualItems()"
+          :key="segments[virtualRow.index]?.key ?? String(virtualRow.key)"
+          :ref="measureElement"
+          :data-index="virtualRow.index"
+          class="chat-item"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transform: `translateY(${virtualRow.start}px)`,
+          }"
+        >
+          <UserBubble v-if="segmentAt(virtualRow.index)?.type === 'user'" :message="(segmentAt(virtualRow.index) as UserSegment).message" />
           <WorkCard
-            v-else-if="item.type === 'turn'"
-            :running="item.running"
-            :elapsed-sec="item.elapsedSec"
-            :done-ms="item.doneMs"
-            :items="item.items"
+            v-else-if="segmentAt(virtualRow.index)?.type === 'turn'"
+            :running="(segmentAt(virtualRow.index) as WorkSegment).running"
+            :elapsed-sec="(segmentAt(virtualRow.index) as WorkSegment).elapsedSec"
+            :done-ms="(segmentAt(virtualRow.index) as WorkSegment).doneMs"
+            :items="(segmentAt(virtualRow.index) as WorkSegment).items"
           />
           <ApprovalCard
-            v-else-if="item.type === 'approval'"
-            :pending="item.pending"
-            @answer="(outcome) => emit('approve', item.pending, outcome)"
+            v-else-if="segmentAt(virtualRow.index)?.type === 'approval'"
+            :pending="(segmentAt(virtualRow.index) as ApprovalSegment).pending"
+            @answer="(outcome) => emit('approve', (segmentAt(virtualRow.index) as ApprovalSegment).pending, outcome)"
           />
           <QuestionCard
             v-else
-            :pending="item.pending"
-            @submit="(answers) => emit('submitQuestion', item.pending, answers)"
-            @cancel="emit('cancelQuestion', item.pending)"
+            :pending="(segmentAt(virtualRow.index) as QuestionSegment).pending"
+            @submit="(answers) => emit('submitQuestion', (segmentAt(virtualRow.index) as QuestionSegment).pending, answers)"
+            @cancel="emit('cancelQuestion', (segmentAt(virtualRow.index) as QuestionSegment).pending)"
           />
         </div>
-      </template>
-    </VList>
+      </div>
+    </div>
     <button
-      v-if="jumpVisible"
+      v-if="rowVirtualizer.getDistanceFromEnd() > 240"
       type="button"
       class="chat-jump"
       aria-label="滚动到底部"
-      @click="jumpToBottom"
+      @click="rowVirtualizer.scrollToEnd()"
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
