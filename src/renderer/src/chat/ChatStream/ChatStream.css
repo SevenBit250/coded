@@ -47,21 +47,22 @@
   height: 16px;
 }
 
+/* .chat-stream is now virtua's VList root: it owns the overflow (inline)
+   and item positioning; we keep the geometry contract — flex fill, the
+   full-bleed scroller with the bar hugging the panel's right edge, the
+   centered message column via symmetric padding, and bottom padding =
+   composer height (--composer-h, published by Main's ResizeObserver) so
+   the last row clears the floating card. Segment spacing moved INTO each
+   item (margins don't count in the virtualizer's measurements). */
 .chat-stream {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  /* Full-bleed scroller: the bar hugs the panel's right edge; the message
-     column is centered via symmetric padding, not a narrowed box — a width
-     here would pull the scrollbar inward. Bottom padding is the composer's
-     measured height (--composer-h, published by Main's ResizeObserver) so
-     the last row can scroll clear above the floating card. The conversation
-     column (one shared width for transcript + composer, like the reference):
-     76px side insets, capped at 1380px. */
   padding: 20px max(var(--conv-inset), calc((100% - var(--conv-max)) / 2)) calc(var(--composer-h, 132px) + 20px);
+}
+
+/* Per-item bottom spacing (was the scroller's flex gap). */
+.chat-item {
+  padding-bottom: 14px;
 }
 
 .content.in-session .composer-anchor {
