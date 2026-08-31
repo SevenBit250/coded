@@ -27,7 +27,13 @@ import type {
 } from './client'
 
 /** One transcript entry plus the shell-local send-error decoration. */
-export type ChatMessage = CodedTranscriptItem & { error?: string }
+export type ChatMessage = CodedTranscriptItem & {
+  error?: string
+  /** Shell-side wall clock when a streaming reasoning block was announced. */
+  startedAt?: number
+  /** Shell-measured reasoning duration (finalize − start), for the fold label. */
+  durationMs?: number
+}
 
 /** A pending tool-call approval (answerable via its stable gateId). */
 export interface PendingApproval {
@@ -243,7 +249,10 @@ export function useSession(
     setMessages((prev) => {
       const at = prev.findIndex((m) => m.id === item.id)
       if (at >= 0) return prev
-      return [...prev, { ...item }]
+      // Stamp the wall clock on a freshly announced streaming block so the
+      // fold label can show a live/measured duration (shell-only data).
+      const startedAt = item.kind === 'reasoning' && item.streaming === true ? Date.now() : undefined
+      return [...prev, startedAt === undefined ? { ...item } : { ...item, startedAt }]
     })
   }, [])
 
@@ -278,6 +287,9 @@ export function useSession(
         ...target,
         text: text !== '' ? text : target.text,
         streaming: false,
+        ...(target.kind === 'reasoning' && target.startedAt !== undefined
+          ? { durationMs: Date.now() - target.startedAt }
+          : {}),
       }
       return updated
     })

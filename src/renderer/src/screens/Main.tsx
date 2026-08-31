@@ -619,9 +619,11 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
     return () => observer.disconnect()
   }, [])
 
-  // Turn timer: wall-clock seconds since the running flag went up; ticks
-  // once a second while the turn runs, resets when it ends.
+  // Turn clock: wall-clock seconds since the running flag went up; ticks
+  // once a second while the turn runs. When it ends, the span is captured
+  // for the turn group's "已工作 N 秒" fold header.
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null)
+  const [lastTurnMs, setLastTurnMs] = useState<number | null>(null)
   const [nowTick, setNowTick] = useState(Date.now())
   useEffect(() => {
     if (activeRunning) {
@@ -629,15 +631,14 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
       const timer = setInterval(() => setNowTick(Date.now()), 1000)
       return () => clearInterval(timer)
     }
+    if (turnStartedAt !== null) setLastTurnMs(Date.now() - turnStartedAt)
     setTurnStartedAt(null)
     return undefined
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRunning])
+  useEffect(() => setLastTurnMs(null), [selectedSession])
   const turnSeconds =
     turnStartedAt === null ? 0 : Math.max(0, Math.floor((nowTick - turnStartedAt) / 1000))
-  const turnLabel =
-    turnSeconds < 60
-      ? `已工作 ${String(turnSeconds)} 秒`
-      : `已工作 ${String(Math.floor(turnSeconds / 60))} 分 ${String(turnSeconds % 60)} 秒`
 
   // Anchor-bar chips (in-session): the session's workspace — its pinned
   // preset name joins below, next to the presets roster declaration.
@@ -1429,17 +1430,8 @@ export function Main({ visible, themeChoice, onThemeChoice }: MainProps): ReactE
           {session.messages.length > 0 && (
             <ChatStream
               messages={session.messages}
-              header={
-                turnStartedAt !== null ? (
-                  <div className="turn-status">
-                    <Icon viewBox="0 0 24 24" strokeWidth={1.6}>
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M12 7v5l3 2" />
-                    </Icon>
-                    {turnLabel}
-                  </div>
-                ) : undefined
-              }
+              runningSec={turnStartedAt !== null ? turnSeconds : null}
+              lastTurnMs={lastTurnMs}
               trailTick={
                 session.pendingApprovals.length + session.pendingQuestions.length
               }
