@@ -15,8 +15,8 @@ import {
   Tooltip,
   WindowControls,
   useShortcut,
-} from '@uibase/vue'
-import type { DropdownAction, DropdownOption } from '@uibase/vue'
+} from '@uibase'
+import type { DropdownAction, DropdownOption } from '@uibase'
 import { useDirectoryStore } from '../bridge/directory-store'
 import { useSessionStore } from '../bridge/session-store'
 import ChatStream from '../bridge/ChatStream.vue'

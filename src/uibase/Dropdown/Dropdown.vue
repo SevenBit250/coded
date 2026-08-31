@@ -88,7 +88,7 @@ export interface DropdownProps {
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import Icon from '../Icon/Icon.vue'
-import { useShortcut } from '../vue/useShortcut'
+import { useShortcut } from '../Meta/useShortcut'
 import { shortcutLabel } from '../Meta/shortcuts'
 import './Dropdown.css'
 

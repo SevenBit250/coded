@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
-import { applyTheme } from '@uibase/vue'
+import { applyTheme } from '@uibase'
 import Startup from './screens/Startup.vue'
 import Main from './screens/Main.vue'
 import { THEMES, loadThemeChoice, resolveTheme, saveThemeChoice, systemPrefersDark } from './theme'

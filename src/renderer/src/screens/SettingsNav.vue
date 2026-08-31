@@ -21,7 +21,7 @@ export const NAV: { group: string; items: { id: SettingsCategory; label: string 
 </script>
 
 <script setup lang="ts">
-import { Icon } from '@uibase/vue'
+import { Icon } from '@uibase'
 
 defineProps<{
   category: SettingsCategory

@@ -1,26 +1,37 @@
-import { useEffect, useRef } from 'react'
+import { watchEffect } from 'vue'
+import type { Ref } from 'vue'
 import { registerShortcut } from './shortcuts'
 
 /**
- * Bind an app-global shortcut for the lifetime of the calling component.
- *
- * `handler` is read through a ref so re-renders never tear the binding down;
- * `enabled` (default true) is the owner's disabled gate — the shortcut only
- * responds while the owner is interactive. Registration is exclusive (the
- * registry throws on duplicates), so a shortcut may have exactly one owner
- * at a time.
+ * Bind an app-global shortcut for the lifetime of the calling component
+ * (or any active effect scope). `shortcut` may be a plain string or a
+ * ref/getter so owners can rebind reactively; `handler` is read through a
+ * ref so re-renders never tear the binding down; `enabled` (default true)
+ * is the owner's disabled gate. Registration is exclusive (the registry
+ * throws on duplicates), so a shortcut may have exactly one owner at a time.
  */
 export function useShortcut(
-  shortcut: string | undefined,
+  shortcut: string | undefined | Ref<string | undefined> | (() => string | undefined),
   handler: () => void,
-  opts?: { enabled?: boolean },
+  opts?: { enabled?: boolean | Ref<boolean> | (() => boolean) },
 ): void {
-  const enabled = opts?.enabled ?? true
-  const handlerRef = useRef(handler)
-  handlerRef.current = handler
-
-  useEffect(() => {
-    if (shortcut === undefined || !enabled) return
-    return registerShortcut(shortcut, () => handlerRef.current())
-  }, [shortcut, enabled])
+  const handlerRef = { current: handler }
+  watchEffect((onCleanup) => {
+    const value =
+      typeof shortcut === 'function'
+        ? shortcut()
+        : shortcut !== null && typeof shortcut === 'object'
+          ? shortcut.value
+          : shortcut
+    const enabled =
+      opts?.enabled === undefined
+        ? true
+        : typeof opts.enabled === 'function'
+          ? opts.enabled()
+          : typeof opts.enabled === 'object'
+            ? opts.enabled.value
+            : opts.enabled
+    if (value === undefined || !enabled) return
+    onCleanup(registerShortcut(value, () => handlerRef.current()))
+  })
 }

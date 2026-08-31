@@ -2,7 +2,7 @@
 import { useAttrs } from 'vue'
 import Tooltip from '../Tooltip/Tooltip.vue'
 import type { TooltipPlacement } from '../Tooltip/Tooltip.vue'
-import { useShortcut } from '../vue/useShortcut'
+import { useShortcut } from '../Meta/useShortcut'
 import { shortcutLabel } from '../Meta/shortcuts'
 import './MetaButton.css'
 

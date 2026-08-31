@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Menu, MenuItem, Icon } from '@uibase/vue'
+import { Menu, MenuItem, Icon } from '@uibase'
 
 /** One workspace group header row: folder-open/closed carries the collapse
  *  state; hover reveals the ⋯ menu (rename/delete) and the + new-session

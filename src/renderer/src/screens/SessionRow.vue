@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Menu, MenuItem, Icon, Spinner } from '@uibase/vue'
+import { Menu, MenuItem, Icon, Spinner } from '@uibase'
 
 /** Compact relative time for session rows (刚刚 / {n}分钟 / {n}小时 / {n}天). */
 function relTime(minutesAgo: number): string {

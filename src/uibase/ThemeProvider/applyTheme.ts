@@ -1,5 +1,5 @@
-import { toCssVars } from '../ThemeProvider/tokens'
-import type { ThemeTokens } from '../ThemeProvider/tokens'
+import { toCssVars } from './tokens'
+import type { ThemeTokens } from './tokens'
 
 export type { ThemeTokens }
 export { toCssVars }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue'
-import { Dropdown } from '@uibase/vue'
+import { Dropdown } from '@uibase'
 import { bridge } from '../bridge/client'
 import { BRIDGE_PROTOCOL_VERSION } from '@coded/bridge-protocol'
 import type { ThemeChoice } from '../theme'
