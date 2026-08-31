@@ -4,22 +4,22 @@ import { useVirtualizer } from '@tanstack/vue-virtual'
 import './ChatStream.css'
 import UserBubble from '../UserBubble/UserBubble.vue'
 import WorkCard from '../WorkCard/WorkCard.vue'
-import ApprovalCard from '../ApprovalCard/ApprovalCard.vue'
-import type { PendingApproval, PendingQuestion, ChatMessage } from '../../bridge/session-store'
+import type { ChatMessage } from '../../bridge/session-store'
 
 /**
  * ChatStream — the transcript view over semantic transcript items (§2.3),
  * window-rendered by @tanstack/vue-virtual (headless: we render the scroll
  * container, the total-size spacer, and absolutely-positioned segments).
- * Virtual items are SEGMENTS: a user bubble, a work card (one AI turn:
- * header + step folds + answer text), or a tail gate card.
+ * Virtual items are SEGMENTS: a user bubble or a work card (one AI turn:
+ * header + step folds + answer text). Answerable gates (approval/question)
+ * do NOT live here — they replace the composer in Main's anchor, the
+ * reference interaction.
  *
  * Chat-mode behaviors, native to the virtualizer:
  *  - anchorTo 'end' + followOnAppend 'auto' — stick to the bottom while the
  *    user is at the bottom (new segments), stop following the moment they
  *    scroll up;
- *  - gap / paddingStart / paddingEnd — spacing and --composer-h clearance
- *    reserved INSIDE the virtualizer's size math;
+ *  - gap — inter-segment spacing inside the virtualizer's size math;
  *  - measureElement — dynamic heights (markdown, fold expansion) with
  *    scroll-position correction on size change (the "推挤" fix);
  *  - getDistanceFromEnd — the "回到底部" pill threshold.
@@ -29,22 +29,13 @@ import type { PendingApproval, PendingQuestion, ChatMessage } from '../../bridge
 const props = withDefaults(
   defineProps<{
     messages: ChatMessage[]
-    /** Bumped when the trailing children change identity (e.g. gate count). */
-    trailTick?: number
     /** Seconds elapsed on the running turn (present only while one runs). */
     runningSec?: number | null
     /** Measured wall-clock span of the most recently finished turn. */
     lastTurnMs?: number | null
-    pendingApprovals: PendingApproval[]
-    pendingQuestions: PendingQuestion[]
-    activeSessionId: string | null
   }>(),
-  { trailTick: 0, runningSec: null, lastTurnMs: null },
+  { runningSec: null, lastTurnMs: null },
 )
-
-const emit = defineEmits<{
-  approve: [pending: PendingApproval, outcome: 'allowed-once' | 'rejected']
-}>()
 
 const scrollEl = ref<HTMLElement | null>(null)
 
@@ -63,12 +54,7 @@ interface UserSegment {
   key: string
   message: ChatMessage
 }
-interface ApprovalSegment {
-  type: 'approval'
-  key: string
-  pending: PendingApproval
-}
-type ChatListItem = WorkSegment | UserSegment | ApprovalSegment
+type ChatListItem = WorkSegment | UserSegment
 
 const segments = computed<ChatListItem[]>(() => {
   const out: ChatListItem[] = []
@@ -97,12 +83,6 @@ const segments = computed<ChatListItem[]>(() => {
       doneMs: running ? null : props.lastTurnMs,
       items: group,
     })
-  }
-  // Approval gates ride at the tail as their own items. Question gates do
-  // NOT live here — they replace the composer (Main renders them in the
-  // composer anchor) per the reference interaction.
-  for (const pending of props.pendingApprovals.filter((p) => p.sessionId === props.activeSessionId)) {
-    out.push({ type: 'approval', key: `gate-${pending.approvalId}`, pending })
   }
   return out
 })
@@ -187,11 +167,6 @@ watch(tailTextLength, () => {
             :elapsed-sec="(segmentAt(virtualRow.index) as WorkSegment).elapsedSec"
             :done-ms="(segmentAt(virtualRow.index) as WorkSegment).doneMs"
             :items="(segmentAt(virtualRow.index) as WorkSegment).items"
-          />
-          <ApprovalCard
-            v-else-if="segmentAt(virtualRow.index)?.type === 'approval'"
-            :pending="(segmentAt(virtualRow.index) as ApprovalSegment).pending"
-            @answer="(outcome) => emit('approve', (segmentAt(virtualRow.index) as ApprovalSegment).pending, outcome)"
           />
         </div>
       </div>

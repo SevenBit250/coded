@@ -1,1 +1,74 @@
-/* Question-form-only gate styles (shared card chrome in ../styles/gate.css). */
+/* QuestionCard wizard chrome (rows/cards live in the shared
+   ../styles/gate.css): the per-question header — question text as the
+   title, header chip beside it — and the ‹ 1 / N › pager. */
+
+.elicit-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.elicit-head-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.elicit-question {
+  font-weight: 600;
+  color: var(--text, #1f2328);
+  line-height: 1.5;
+}
+
+.elicit-detail {
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted, #8a8f99);
+}
+
+.elicit-pager {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #8a8f99);
+}
+
+.elicit-pager-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #8a8f99);
+  cursor: pointer;
+}
+
+.elicit-pager-btn:hover:not(:disabled) {
+  background: var(--bg-soft, rgba(128, 128, 128, 0.1));
+  color: var(--text, #1f2328);
+}
+
+.elicit-pager-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.elicit-pager-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.elicit-count {
+  min-width: 34px;
+  text-align: center;
+}

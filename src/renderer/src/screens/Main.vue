@@ -21,6 +21,7 @@ import { useDirectoryStore } from '../bridge/directory-store'
 import { useSessionStore } from '../bridge/session-store'
 import ChatStream from '../chat/ChatStream/ChatStream.vue'
 import QuestionCard from '../chat/QuestionCard/QuestionCard.vue'
+import ApprovalCard from '../chat/ApprovalCard/ApprovalCard.vue'
 import SettingsNav from './SettingsNav.vue'
 import type { SettingsCategory } from './SettingsNav.vue'
 import SettingsPane from './SettingsPane.vue'
@@ -297,6 +298,12 @@ const pendingBySession = computed(() => {
 /** Question gates of the ACTIVE session — they replace the composer. */
 const activeQuestions = computed(() =>
   session.pendingQuestions.filter((p) => p.sessionId === selectedSession.value),
+)
+
+/** Approval gates of the ACTIVE session — same interaction slot: the
+    permission card replaces the composer (reference behavior). */
+const activeApprovals = computed(() =>
+  session.pendingApprovals.filter((p) => p.sessionId === selectedSession.value),
 )
 
 /** Directory → sidebar row shape (recency bucket computed per recompute). */
@@ -1151,11 +1158,6 @@ watch(surface, () => {
             :messages="session.messages"
             :running-sec="turnStartedAt !== null ? turnSeconds : null"
             :last-turn-ms="lastTurnMs"
-            :trail-tick="session.pendingApprovals.length + session.pendingQuestions.length"
-            :pending-approvals="session.pendingApprovals"
-            :pending-questions="session.pendingQuestions"
-            :active-session-id="selectedSession"
-            @approve="(p, outcome) => session.answerApproval(p, outcome)"
           />
 
           <!-- Centered in the conversation area: the composer anchors the
@@ -1164,15 +1166,22 @@ watch(surface, () => {
           <div ref="composerAnchorRef" class="composer-anchor">
             <h1 v-if="session.messages.length === 0" class="greeting">{{ greeting() }}</h1>
 
-            <!-- Question gates replace the composer while pending (reference
-                interaction: the answer IS the input). -->
-            <div v-if="activeQuestions.length > 0" class="pending-questions">
+            <!-- Interaction gates replace the composer while pending
+                (reference interaction: the answer IS the input). Questions
+                stack first; approval (permission) cards ride below them. -->
+            <div v-if="activeQuestions.length > 0 || activeApprovals.length > 0" class="pending-gates">
               <QuestionCard
                 v-for="pending in activeQuestions"
                 :key="pending.gateId"
                 :pending="pending"
                 @submit="(answers) => session.answerQuestion(pending, answers)"
                 @cancel="session.cancelQuestion(pending)"
+              />
+              <ApprovalCard
+                v-for="pending in activeApprovals"
+                :key="pending.gateId"
+                :pending="pending"
+                @answer="(outcome) => session.answerApproval(pending, outcome)"
               />
             </div>
             <div v-else class="composer">

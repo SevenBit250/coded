@@ -1,52 +1,55 @@
 /* Answerable gate cards shared by ApprovalCard / QuestionCard
-   (approval / question forms at the transcript tail). */
-/* ---- Answerable gates: approval / question cards at the transcript tail. ---- */
+   (approval / question forms rendered in the composer anchor). */
+/* ---- Interaction panels: the shared card + option-row family, restyled
+   after the ZCode permission/elicitation cards (from its renderer bundle).
+   The reference fills rows on hover and tints the selected row — an
+   intentional exception to the hover-fg-only rule, which governs the
+   sidebar/list rows. ---- */
 
-.gate-card {
-  max-width: 82%;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
-  background: var(--panel, rgba(128, 128, 128, 0.08));
-  border-bottom-left-radius: 5px;
+.gate-panel {
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+  border-radius: 14px;
+  background: var(--panel, rgba(128, 128, 128, 0.08));
+  box-shadow: 0 2px 12px rgba(var(--shadow-rgb, 0, 0, 0), 0.08);
   font-size: 13px;
   line-height: 1.6;
-  color: var(--text);
+  color: var(--text, #1f2328);
+  outline: none;
 }
 
-.gate-head {
+.gate-panel-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
-.gate-badge {
-  flex: none;
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--warn-bg, rgba(230, 162, 60, 0.18));
-  color: var(--warn, #b57d1f);
-}
-
-.gate-title {
+.gate-panel-title {
+  font-size: 12px;
   font-weight: 600;
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 12px;
-}
-
-.gate-reason { margin: 0; }
-
-.gate-detail {
-  margin: 0;
-  font-size: 12px;
   color: var(--muted, #8a8f99);
 }
 
-.gate-args {
+.gate-panel-tool {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  padding: 1px 8px;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  color: var(--text, #1f2328);
+}
+
+.gate-panel-reason {
+  margin: 0;
+}
+
+.gate-panel-args {
   margin: 0;
   padding: 8px 10px;
   border-radius: 8px;
@@ -59,76 +62,179 @@
   overflow-y: auto;
 }
 
-.gate-question {
+/* Option rows: numbered (single-select) or checkbox (multi-select), with a
+   trailing custom-answer input row numbered N+1. */
+
+.gate-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
-.gate-options {
+.gate-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
-.gate-option {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
+button.gate-row {
   cursor: pointer;
 }
 
-.gate-option.active {
+.gate-row:hover,
+.gate-row.is-cursor {
+  background: var(--bg-soft, rgba(128, 128, 128, 0.1));
+}
+
+.gate-row:focus-visible {
+  outline: 2px solid var(--accent, #e8734a);
+  outline-offset: -2px;
+}
+
+.gate-row.is-selected {
+  background: var(--accent-bg, rgba(232, 115, 74, 0.14));
+}
+
+.gate-row-index {
+  width: 20px;
+  flex: none;
+  font-weight: 600;
+  color: var(--muted, #8a8f99);
+}
+
+.gate-row.is-selected .gate-row-index {
+  color: var(--text, #1f2328);
+}
+
+.gate-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.gate-row-label {
+  font-weight: 600;
+  color: var(--text, #1f2328);
+}
+
+.gate-row-desc {
+  font-size: 12px;
+  color: var(--muted, #8a8f99);
+}
+
+.gate-row-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  color: transparent;
+}
+
+.gate-row.is-selected .gate-row-check {
   background: var(--accent, #e8734a);
   border-color: transparent;
   color: #ffffff;
 }
 
-.gate-custom {
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  outline: none;
+.gate-row-check svg {
+  width: 12px;
+  height: 12px;
 }
 
-.gate-custom:focus {
-  border-color: var(--accent, #e8734a);
+.gate-row--input {
+  cursor: text;
+}
+
+.gate-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text, #1f2328);
+  padding: 0;
+}
+
+.gate-input::placeholder {
+  font-weight: 400;
+  color: var(--muted, #8a8f99);
+}
+
+/* Footer: keyboard hint on the left, verbs on the right. */
+
+.gate-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.gate-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted, #8a8f99);
+}
+
+.gate-hint-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
 }
 
 .gate-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
-  justify-content: flex-end;
+  flex: none;
 }
 
-.gate-btn {
-  padding: 5px 14px;
-  border-radius: 8px;
+.gate-ghost {
+  padding: 6px 16px;
   border: 1px solid var(--border, rgba(128, 128, 128, 0.3));
+  border-radius: 8px;
   background: transparent;
-  color: var(--text);
-  font-size: 12px;
+  color: var(--text, #1f2328);
+  font-size: 13px;
   cursor: pointer;
 }
 
-.gate-btn--primary {
+.gate-ghost:hover {
+  background: var(--bg-soft, rgba(128, 128, 128, 0.1));
+}
+
+.gate-confirm {
+  padding: 6px 18px;
+  border: none;
+  border-radius: 8px;
   background: var(--accent, #e8734a);
-  border-color: transparent;
   color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.gate-btn--primary:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.gate-btn--danger {
-  color: var(--danger, #e34d59);
-  border-color: var(--danger, #e34d59);
+.gate-confirm:hover {
+  filter: brightness(1.06);
+  color: #ffffff;
 }
