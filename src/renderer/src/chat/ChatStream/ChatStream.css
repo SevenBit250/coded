@@ -98,3 +98,18 @@
   display: none;
 }
 
+
+/* Pending question gates rendered in the composer anchor (reference
+   interaction): the answer IS the input, so the cards fill the anchor and
+   stack above the (hidden) composer. */
+.pending-questions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.composer-anchor .gate-card {
+  max-width: 100%;
+  width: 100%;
+}

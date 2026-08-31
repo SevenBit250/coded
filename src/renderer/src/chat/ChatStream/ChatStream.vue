@@ -5,7 +5,6 @@ import './ChatStream.css'
 import UserBubble from '../UserBubble/UserBubble.vue'
 import WorkCard from '../WorkCard/WorkCard.vue'
 import ApprovalCard from '../ApprovalCard/ApprovalCard.vue'
-import QuestionCard from '../QuestionCard/QuestionCard.vue'
 import type { PendingApproval, PendingQuestion, ChatMessage } from '../../bridge/session-store'
 
 /**
@@ -45,8 +44,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   approve: [pending: PendingApproval, outcome: 'allowed-once' | 'rejected']
-  submitQuestion: [pending: PendingQuestion, answers: { id: string; selected: string[]; custom?: string }[]]
-  cancelQuestion: [pending: PendingQuestion]
 }>()
 
 const scrollEl = ref<HTMLElement | null>(null)
@@ -71,12 +68,7 @@ interface ApprovalSegment {
   key: string
   pending: PendingApproval
 }
-interface QuestionSegment {
-  type: 'question'
-  key: string
-  pending: PendingQuestion
-}
-type ChatListItem = WorkSegment | UserSegment | ApprovalSegment | QuestionSegment
+type ChatListItem = WorkSegment | UserSegment | ApprovalSegment
 
 const segments = computed<ChatListItem[]>(() => {
   const out: ChatListItem[] = []
@@ -106,12 +98,11 @@ const segments = computed<ChatListItem[]>(() => {
       items: group,
     })
   }
-  // Gates ride at the tail as their own items.
+  // Approval gates ride at the tail as their own items. Question gates do
+  // NOT live here — they replace the composer (Main renders them in the
+  // composer anchor) per the reference interaction.
   for (const pending of props.pendingApprovals.filter((p) => p.sessionId === props.activeSessionId)) {
     out.push({ type: 'approval', key: `gate-${pending.approvalId}`, pending })
-  }
-  for (const pending of props.pendingQuestions.filter((p) => p.sessionId === props.activeSessionId)) {
-    out.push({ type: 'question', key: `gate-${pending.gateId}`, pending })
   }
   return out
 })
@@ -201,12 +192,6 @@ watch(tailTextLength, () => {
             v-else-if="segmentAt(virtualRow.index)?.type === 'approval'"
             :pending="(segmentAt(virtualRow.index) as ApprovalSegment).pending"
             @answer="(outcome) => emit('approve', (segmentAt(virtualRow.index) as ApprovalSegment).pending, outcome)"
-          />
-          <QuestionCard
-            v-else
-            :pending="(segmentAt(virtualRow.index) as QuestionSegment).pending"
-            @submit="(answers) => emit('submitQuestion', (segmentAt(virtualRow.index) as QuestionSegment).pending, answers)"
-            @cancel="emit('cancelQuestion', (segmentAt(virtualRow.index) as QuestionSegment).pending)"
           />
         </div>
       </div>

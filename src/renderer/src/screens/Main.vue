@@ -20,6 +20,7 @@ import type { DropdownAction, DropdownOption } from '@uibase'
 import { useDirectoryStore } from '../bridge/directory-store'
 import { useSessionStore } from '../bridge/session-store'
 import ChatStream from '../chat/ChatStream/ChatStream.vue'
+import QuestionCard from '../chat/QuestionCard/QuestionCard.vue'
 import SettingsNav from './SettingsNav.vue'
 import type { SettingsCategory } from './SettingsNav.vue'
 import SettingsPane from './SettingsPane.vue'
@@ -292,6 +293,11 @@ const pendingBySession = computed(() => {
   for (const q of session.pendingQuestions) set.add(q.sessionId)
   return set
 })
+
+/** Question gates of the ACTIVE session — they replace the composer. */
+const activeQuestions = computed(() =>
+  session.pendingQuestions.filter((p) => p.sessionId === selectedSession.value),
+)
 
 /** Directory → sidebar row shape (recency bucket computed per recompute). */
 const workspaces = computed<WorkspaceStub[]>(() =>
@@ -1150,8 +1156,6 @@ watch(surface, () => {
             :pending-questions="session.pendingQuestions"
             :active-session-id="selectedSession"
             @approve="(p, outcome) => session.answerApproval(p, outcome)"
-            @submit-question="(p, answers) => session.answerQuestion(p, answers)"
-            @cancel-question="(p) => session.cancelQuestion(p)"
           />
 
           <!-- Centered in the conversation area: the composer anchors the
@@ -1160,7 +1164,18 @@ watch(surface, () => {
           <div ref="composerAnchorRef" class="composer-anchor">
             <h1 v-if="session.messages.length === 0" class="greeting">{{ greeting() }}</h1>
 
-            <div class="composer">
+            <!-- Question gates replace the composer while pending (reference
+                interaction: the answer IS the input). -->
+            <div v-if="activeQuestions.length > 0" class="pending-questions">
+              <QuestionCard
+                v-for="pending in activeQuestions"
+                :key="pending.gateId"
+                :pending="pending"
+                @submit="(answers) => session.answerQuestion(pending, answers)"
+                @cancel="session.cancelQuestion(pending)"
+              />
+            </div>
+            <div v-else class="composer">
               <!-- Head row (workspace + mode) is a home-draft affordance only:
                   in-session the info lives in the titlebar chips. -->
               <div v-if="selectedSession === null" class="composer-head">
