@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import TranscriptRow from './TranscriptRow.vue'
 import TurnGroup from './TurnGroup.vue'
 import ApprovalCard from './ApprovalCard.vue'
 import QuestionCard from './QuestionCard.vue'
