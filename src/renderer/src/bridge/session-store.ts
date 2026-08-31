@@ -17,6 +17,9 @@ import type {
   QuestionAnswerItem,
 } from './client'
 
+/** Wire-type re-exports for component consumers (parity with the hook). */
+export type { QuestionItem, QuestionAnswerItem, CodedTranscriptItem, BridgeStatus }
+
 export type ChatMessage = CodedTranscriptItem & {
   error?: string
   /** Shell-side wall clock when a streaming reasoning block was announced. */
