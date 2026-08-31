@@ -27,6 +27,8 @@ export interface MetaButtonProps {
   shortcut?: string
 }
 
+defineOptions({ inheritAttrs: false })
+
 const props = withDefaults(defineProps<MetaButtonProps>(), {
   onClick: undefined,
   className: undefined,
@@ -39,13 +41,11 @@ const props = withDefaults(defineProps<MetaButtonProps>(), {
 // the click listener land here and flow onto the native button.
 const attrs = useAttrs()
 
-// Latest attrs read keeps the binding fresh without re-registering.
+// The shortcut mirrors the click; onClick is a DECLARED prop, so it never
+// appears in attrs — read it off props (reactive, always the latest).
 useShortcut(
   () => props.shortcut,
-  () => {
-    const onClick = attrs['onClick'] as (() => void) | undefined
-    onClick?.()
-  },
+  () => props.onClick?.(),
 )
 </script>
 
@@ -58,6 +58,7 @@ useShortcut(
     <button
       :class="`ui-metabtn${className !== undefined ? ` ${className}` : ''}`"
       :aria-label="label"
+      @click="onClick"
       v-bind="attrs"
     >
       <slot />

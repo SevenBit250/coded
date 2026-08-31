@@ -11,6 +11,8 @@ export interface IconButtonProps {
   className?: string
 }
 
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<IconButtonProps>()
 
 // label/tip/shortcut/onClick/disabled/aria-* flow through to MetaButton.

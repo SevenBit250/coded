@@ -15,6 +15,8 @@ export interface ButtonProps {
   className?: string
 }
 
+defineOptions({ inheritAttrs: false })
+
 const props = withDefaults(defineProps<ButtonProps>(), {
   variant: 'secondary',
   size: 'md',
