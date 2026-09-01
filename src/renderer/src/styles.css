@@ -714,22 +714,23 @@ html[data-platform='win32'] .anchor-bar {
   border-bottom: 1px solid var(--hairline);
   -webkit-app-region: drag;
   user-select: none;
+  /* The collapse hand-off eases the leading edge; see the collapsed rule. */
+  transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.main-body.collapsed .session-titlebar {
+  /* Don't overlap the anchor-left cluster: app regions resolve in DOM
+     order, so this (later) drag surface would blanket the buttons'
+     no-drag holes the moment it covers them. Sliding the strip's leading
+     EDGE past the cluster keeps both truths: buttons keep their holes
+     (anchor-bar underneath owns x<margin), and the strip stays fully
+     draggable from the cluster's right edge onward. Tune point: the
+     margin = cluster width (toggle/arrows/new-chat). */
+  margin-left: 138px;
 }
 html[data-platform='win32'] .session-titlebar {
   padding-right: 150px;
 }
-/* Collapsed sidebar: a fixed-width spacer yields the titlebar's leading
-   edge to the floating anchor-left cluster (toggle/arrows/new-chat).
-   The width eases in sync with the content panel's collapse slide; the
-   pixel value is the tune point for the cluster's real extent. */
-.titlebar-spacer {
-  flex: none;
-  width: 0;
-  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.main-body.collapsed .titlebar-spacer {
-  width: 124px;
-}
+
 .titlebar-title {
   font-size: 14px;
   font-weight: 650;
