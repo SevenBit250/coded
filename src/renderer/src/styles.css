@@ -709,7 +709,7 @@ html[data-platform='win32'] .anchor-bar {
   align-items: center;
   gap: 8px;
   height: 46px;
-  padding: 0 14px 0 24px;
+  padding: 0 14px 0 14px;
   min-width: 0;
   border-bottom: 1px solid var(--hairline);
   -webkit-app-region: drag;
@@ -717,6 +717,18 @@ html[data-platform='win32'] .anchor-bar {
 }
 html[data-platform='win32'] .session-titlebar {
   padding-right: 150px;
+}
+/* Collapsed sidebar: a fixed-width spacer yields the titlebar's leading
+   edge to the floating anchor-left cluster (toggle/arrows/new-chat).
+   The width eases in sync with the content panel's collapse slide; the
+   pixel value is the tune point for the cluster's real extent. */
+.titlebar-spacer {
+  flex: none;
+  width: 0;
+  transition: width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.main-body.collapsed .titlebar-spacer {
+  width: 124px;
 }
 .titlebar-title {
   font-size: 14px;

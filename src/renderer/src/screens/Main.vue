@@ -1153,6 +1153,7 @@ watch(surface, () => {
         />
         <main v-else :class="`content${session.messages.length > 0 ? ' in-session' : ''}`">
           <div v-if="selectedSession !== null" class="session-titlebar">
+            <span class="titlebar-spacer" aria-hidden="true" />
             <span class="titlebar-title">{{ selectedInfo?.title ?? '新会话' }}</span>
             <span v-if="selectedInfo?.workspace !== undefined" class="title-chip">
               <Icon viewBox="0 0 24 24" :stroke-width="1.8">
