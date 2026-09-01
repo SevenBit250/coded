@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch, watchEffect } from 'vue'
 import { applyTheme } from '@uibase'
 import Startup from './screens/Startup.vue'
 import Main from './screens/Main.vue'
+import { useSessionStore } from './bridge/session-store'
 import { THEMES, loadThemeChoice, resolveTheme, saveThemeChoice, systemPrefersDark } from './theme'
 import type { ThemeChoice } from './theme'
 
@@ -11,12 +12,16 @@ import type { ThemeChoice } from './theme'
  *  is phase-visible, so no intermediate state can paint blank. */
 type ShellPhase = 'startup' | 'main'
 
-/**
- * Placeholder for the real readiness gate. The startup screen exists to wait
- * for the backend to launch; until the harness transport is wired, a fixed hold stands
- * in for that signal — swap this timeout for the ready event later.
- */
-const BOOT_HOLD_MS = 1400
+/** Floor dwell on the startup ocean (ms): the brand beat, and the idle
+ *  window the workspace pre-mount lands in. The gate never opens earlier
+ *  than this even when the backend is already connected. */
+const BOOT_MIN_HOLD_MS = 1000
+
+/** Ceiling on waiting for the backend (ms): first harness spawn can take
+ *  tens of seconds; past this the workspace shows anyway (live with the
+ *  bridge's own disconnected state and the manager's auto-restart) instead
+ *  of pinning the user under the glass forever. */
+const BOOT_MAX_WAIT_MS = 60_000
 
 /** Pre-mount the workspace this far into the boot hold (ms): the first
  *  render/layout/paint of the (large) main tree lands while the glass is
@@ -41,12 +46,15 @@ const HOLD_ON_STARTUP = false
  * Theme application is the same :root CSS-custom-property write the React
  * ThemeProvider performed — here as a watcher-driven data swap.
  */
+const session = useSessionStore()
 const phase = ref<ShellPhase>('startup')
 const themeChoice = ref<ThemeChoice>(loadThemeChoice())
 const systemDark = ref(systemPrefersDark())
 const mainMounted = ref(false)
 const whitening = ref(false)
 let started = false
+let minHoldDone = false
+let waitTimedOut = false
 
 // The 'system' choice tracks the OS live.
 watchEffect((onCleanup) => {
@@ -70,12 +78,19 @@ watch(
 
 const timers: number[] = []
 
-function beginTransition(): void {
-  if (started) return
-  started = true
-  // Handoff begins: whiten the glass backdrop first; the actual screen
-  // swap waits for the white dwell below.
-  whitening.value = true
+/**
+ * The real readiness gate: unveil once the backend bridge is connected.
+ * Guards — never before the minimum dwell (ocean flash), never past the
+ * wait ceiling (a failed/restarting backend must not pin the glass); the
+ * workspace itself renders the disconnected state and the manager keeps
+ * retrying underneath.
+ */
+function considerUnveil(): void {
+  if (!minHoldDone || started) return
+  if (session.status === 'bridge-connected' || waitTimedOut || session.status === 'failed') {
+    started = true
+    whitening.value = true
+  }
 }
 
 // Whitening → dwell → atomic swap.
@@ -92,7 +107,20 @@ watch(whitening, (w) => {
 // Signal first paint so the main process can show the window.
 window.coded.ready()
 if (!HOLD_ON_STARTUP) {
-  timers.push(window.setTimeout(beginTransition, BOOT_HOLD_MS))
+  // The gate: minimum dwell, wait ceiling, then follow the bridge status.
+  timers.push(
+    window.setTimeout(() => {
+      minHoldDone = true
+      considerUnveil()
+    }, BOOT_MIN_HOLD_MS),
+  )
+  timers.push(
+    window.setTimeout(() => {
+      waitTimedOut = true
+      considerUnveil()
+    }, BOOT_MAX_WAIT_MS),
+  )
+  watch(() => session.status, considerUnveil)
   // Workspace pre-mount: goes up during the idle part of the hold, hidden
   // at opacity 0 under the startup glass.
   timers.push(
