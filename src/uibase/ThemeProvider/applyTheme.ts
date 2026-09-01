@@ -12,17 +12,25 @@ export { toCssVars }
  * theme object; they keep consuming var(--x, fallback), so a theme swap
  * is just a data swap — call this from a watcher whenever the choice
  * changes.
+ *
+ * Override semantics: the app stylesheet's :root block IS the light theme
+ * (single source; it doubles as the pre-JS fallback). `overrides` carries
+ * only the fields a theme changes relative to it; `null` means "the light
+ * theme" and clears the inline properties so the stylesheet governs again.
  */
 let appliedKeys: string[] = []
 
-export function applyTheme(tokens: ThemeTokens, name: string, scheme?: 'light' | 'dark'): void {
+export function applyTheme(overrides: Partial<ThemeTokens> | null, name: string, scheme?: 'light' | 'dark'): void {
   const root = document.documentElement
   for (const key of appliedKeys) root.style.removeProperty(key)
-  const vars = toCssVars(tokens)
-  for (const [key, value] of Object.entries(vars)) {
-    root.style.setProperty(key, value)
+  appliedKeys = []
+  if (overrides !== null) {
+    const vars = toCssVars(overrides)
+    for (const [key, value] of Object.entries(vars)) {
+      root.style.setProperty(key, value)
+    }
+    appliedKeys = Object.keys(vars)
   }
-  appliedKeys = Object.keys(vars)
   root.dataset.theme = name
   root.style.colorScheme = scheme ?? name
 }

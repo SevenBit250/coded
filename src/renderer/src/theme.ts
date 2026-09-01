@@ -1,41 +1,22 @@
 import type { ThemeTokens } from '@uibase'
 
-/** Theme name: the two built-in palettes. */
+/** Theme name: the built-in palettes. */
 export type ThemeName = 'light' | 'dark'
 
 /**
- * App palettes. `lightTheme` mirrors the :root fallback values in
- * styles.css exactly; `darkTheme` is the hand-tuned dark counterpart.
- * ThemeProvider applies whichever is active — swapping a theme is swapping
- * this data, nothing else.
+ * The light theme lives in exactly ONE place: the `:root` block of
+ * styles.css — it doubles as the pre-JS fallback, so the very first paint
+ * is already correct. This file carries only the per-theme OVERRIDES:
+ * fields a theme changes relative to the stylesheet; anything omitted
+ * inherits the light value. Adding a theme = add one override map and
+ * register it in THEME_OVERRIDES below.
  */
-export const lightTheme: ThemeTokens = {
-  bg: '#fbfbfd',
-  bgSoft: '#f5f6f8',
-  surface: '#ffffff',
-  border: '#e6e8ee',
-  hairline: '#eceef2',
-  text: '#26272d',
-  textDim: '#7d828d',
-  textFaint: '#aab0bb',
-  accent: '#e8734a',
-  dark: '#111214',
-  onDark: '#ffffff',
-  danger: '#e34d59',
-  inkRgb: '20, 22, 26',
-  shadowRgb: '20, 22, 30',
-  overlayBg: 'rgba(20, 22, 26, 0.28)',
-  glassTint: 'rgba(250, 250, 252, 0.22)',
-  watermarkStroke: 'rgba(35, 38, 45, 0.07)',
-  heading: '#2e3138',
-  avatarBg: '#e9e1d8',
-  avatarText: '#6b5b45',
-}
 
 /** Dark palette tuned against ZCode's dark UI: near-black sidebar backdrop,
  *  a hair lighter content area, and clearly raised surfaces. The caption
- *  overlay picks up `bg`, so the native hover block reads light-gray. */
-export const darkTheme: ThemeTokens = {
+ *  overlay picks up `bg`, so the native hover block reads light-gray.
+ *  accent/danger match light and are intentionally omitted. */
+export const darkTheme: Partial<ThemeTokens> = {
   bg: '#1b1d23',
   bgSoft: '#16171c',
   surface: '#26282f',
@@ -44,11 +25,9 @@ export const darkTheme: ThemeTokens = {
   text: '#e5e6ea',
   textDim: '#9ba0aa',
   textFaint: '#6b7079',
-  accent: '#e8734a',
   /* The solid action button inverts in dark mode: light fill, dark glyph. */
   dark: '#eceef2',
   onDark: '#17181b',
-  danger: '#e34d59',
   inkRgb: '255, 255, 255',
   shadowRgb: '0, 0, 0',
   overlayBg: 'rgba(0, 0, 0, 0.5)',
@@ -59,8 +38,10 @@ export const darkTheme: ThemeTokens = {
   avatarText: '#cfd8e3',
 }
 
-export const THEMES: Record<ThemeName, ThemeTokens> = {
-  light: lightTheme,
+/** Overrides per palette name; 'light' is `null` — applyTheme clears the
+ *  inline properties and the stylesheet's light theme governs again. */
+export const THEME_OVERRIDES: Record<ThemeName, Partial<ThemeTokens> | null> = {
+  light: null,
   dark: darkTheme,
 }
 

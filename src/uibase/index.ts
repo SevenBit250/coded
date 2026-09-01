@@ -21,8 +21,9 @@
  *  - Dropdown's custom trigger is a scoped slot (`#trigger`); Menu's
  *    trigger likewise (`renderTrigger` → slot). Item closing flows via
  *    provide/inject ('ui-menu-close').
- *  - ThemeProvider is not a component: `applyTheme(tokens, name, scheme)`
- *    writes the palette onto :root; call it from a watcher (App.vue).
+ *  - ThemeProvider is not a component: `applyTheme(overrides | null, name,
+ *    scheme)` writes a theme's OVERRIDES onto :root (null = clear back to
+ *    the stylesheet's light theme); call it from a watcher (App.vue).
  */
 export { registerShortcut, shortcutLabel } from './Meta/shortcuts'
 export { useShortcut } from './Meta/useShortcut'

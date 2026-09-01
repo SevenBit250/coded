@@ -7,8 +7,10 @@
    ============================================================ */
 
 :root {
-  /* These are the light-theme values, kept as the pre-JS fallback; at
-     runtime ThemeProvider rewrites them from src/renderer/src/theme.ts. */
+  /* These values ARE the light theme — the single source of truth. They
+     double as the pre-JS fallback; dark (and any future theme) applies as
+     inline overrides on top via applyTheme (src/renderer/src/theme.ts),
+     so an omitted field falls back to the light value here. */
   --bg: #fbfbfd;
   --bg-soft: #f5f6f8;
   --surface: #ffffff;

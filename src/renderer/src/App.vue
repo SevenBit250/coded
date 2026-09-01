@@ -4,7 +4,7 @@ import { applyTheme } from '@uibase'
 import Startup from './screens/Startup.vue'
 import Main from './screens/Main.vue'
 import { useSessionStore } from './bridge/session-store'
-import { THEMES, loadThemeChoice, resolveTheme, saveThemeChoice, systemPrefersDark } from './theme'
+import { THEME_OVERRIDES, loadThemeChoice, resolveTheme, saveThemeChoice, systemPrefersDark } from './theme'
 import type { ThemeChoice } from './theme'
 
 /** Startup-sequence phase: the glass, then the workspace. The glass whitens
@@ -69,10 +69,12 @@ watchEffect((onCleanup) => {
 
 const theme = computed(() => resolveTheme(themeChoice.value, systemDark.value))
 
-// Apply the palette to :root before paint on every change.
+// Apply the palette to :root before paint on every change. Light carries
+// no overrides — applyTheme clears the inline set and the stylesheet's
+// :root (the light theme itself) governs.
 watch(
   [theme, systemDark],
-  () => applyTheme(THEMES[theme.value], theme.value, theme.value),
+  () => applyTheme(THEME_OVERRIDES[theme.value], theme.value, theme.value),
   { immediate: true, flush: 'post' },
 )
 

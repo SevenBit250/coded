@@ -51,8 +51,9 @@ export interface ThemeTokens {
   avatarText: string
 }
 
-/** camelCase token keys -> '--kebab-case' custom properties. */
-export function toCssVars(tokens: ThemeTokens): Record<string, string> {
+/** camelCase token keys -> '--kebab-case' custom properties. Accepts a
+ *  partial map — override themes only carry the fields they change. */
+export function toCssVars(tokens: Partial<ThemeTokens>): Record<string, string> {
   const vars: Record<string, string> = {}
   for (const [key, value] of Object.entries(tokens)) {
     vars['--' + key.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())] = value
