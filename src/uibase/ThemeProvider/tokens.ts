@@ -24,6 +24,8 @@ export interface ThemeTokens {
   textFaint: string
   /** Brand accent. */
   accent: string
+  /** Soft tint behind a selected/highlighted row (accent's quiet sibling). */
+  accentBg: string
   /** Solid dark action (send button) background. */
   dark: string
   /** Content drawn on top of `dark` / `danger` solids. */

@@ -19,6 +19,8 @@ const THEME_OPTIONS = [
   { id: 'system', label: '跟随系统' },
   { id: 'light', label: '浅色' },
   { id: 'dark', label: '深色' },
+  { id: 'zcode-light', label: 'ZCode 浅色' },
+  { id: 'zcode-dark', label: 'ZCode 深色' },
 ]
 
 /** Human labels for the lifecycle broadcast. */
@@ -89,7 +91,14 @@ function restart(): void {
               fit-content
               @change="
                 (id) => {
-                  if (id === 'system' || id === 'light' || id === 'dark') emit('update:themeChoice', id)
+                  if (
+                  id === 'system' ||
+                  id === 'light' ||
+                  id === 'dark' ||
+                  id === 'zcode-light' ||
+                  id === 'zcode-dark'
+                )
+                  emit('update:themeChoice', id)
                 }
               "
             />

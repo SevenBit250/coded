@@ -71,10 +71,15 @@ const theme = computed(() => resolveTheme(themeChoice.value, systemDark.value))
 
 // Apply the palette to :root before paint on every change. Light carries
 // no overrides — applyTheme clears the inline set and the stylesheet's
-// :root (the light theme itself) governs.
+// :root (the light theme itself) governs. The name/scheme passed onward is
+// the BINARY scheme: startup ocean palette and html[data-theme] CSS branch
+// on it, so both zcode themes fold into light/dark there.
 watch(
   [theme, systemDark],
-  () => applyTheme(THEME_OVERRIDES[theme.value], theme.value, theme.value),
+  () => {
+    const dark = theme.value === 'dark' || theme.value === 'zcode-dark'
+    applyTheme(THEME_OVERRIDES[theme.value], dark ? 'dark' : 'light', dark ? 'dark' : 'light')
+  },
   { immediate: true, flush: 'post' },
 )
 
@@ -140,7 +145,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Startup v-if="phase === 'startup'" :whitening="whitening" :dark="theme === 'dark'" />
+  <Startup v-if="phase === 'startup'" :whitening="whitening" :dark="theme === 'dark' || theme === 'zcode-dark'" />
   <Main
     v-if="mainMounted"
     :visible="phase === 'main'"
