@@ -16,6 +16,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
+  /* The titlebar divider, owned by the chat area: full content width, so
+     the collapsed titlebar margin never gaps it. */
+  border-top: 1px solid var(--hairline);
 }
 
 .chat-jump {
